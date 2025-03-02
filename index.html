@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procedural Backrooms Game with Enhanced Camera Shake</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        
+        /* Loading Screen Styles */
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+            color: #e9e566;
+            font-family: monospace;
+            transition: opacity 1s;
+        }
+        
+        #loading-bar-container {
+            width: 50%;
+            height: 30px;
+            background-color: #222;
+            border: 2px solid #e9e566;
+            margin-top: 20px;
+            position: relative;
+        }
+        
+        #loading-bar {
+            height: 100%;
+            width:0%;
+            background-color: #e9e566;
+            transition: width 0.3s;
+        }
+        
+        #loading-text {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        #loading-progress {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            top: 5px;
+            font-size: 16px;
+        }
+        
+        #start-button {
+            margin-top: 30px;
+            padding: 10px 20px;
+            background-color: #e9e566;
+            color: #000;
+            border: none;
+            font-family: monospace;
+            font-size: 18px;
+            cursor: pointer;
+            display: none;
+        }
+        
+        #start-button:hover {
+            background-color: #fff;
+        }
+        
+        /* Game UI */
+        #game-ui {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: #e9e566;
+            font-family: monospace;
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 1px 1px 2px #000;
+        }
+        
+        #fps-counter {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            color: #e9e566;
+            font-family: monospace;
+            font-size: 14px;
+            z-index:  получила10;
+            text-shadow: 1px 1px 2px #000;
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 5px 10px;
+            border-radius: 3px;
+        }
+        
+        /* Audio Controls */
+        #audio-controls {
+            position: fixed;
+            bottom: 50px;
+            left: 20px;
+            color: #e9e566;
+            font-family: monospace;
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 1px 1px 2px #000;
+            display: none;
+        }
+        
+        #volume-slider {
+            width: 100px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div id="loading-text">FALLING INTO THE BACKROOMS</div>
+        <div id="loading-bar-container">
+            <div id="loading-bar"></div>
+            <div id="loading-progress">0%</div>
+        </div>
+        <button id="start-button">ENTER</button>
+    </div>
+    
+    <!-- Game UI -->
+    <div id="game-ui" style="display: none;">
+        <div>WASD: Move | SHIFT: Run | CTRL: Crouch | CLICK: Look</div>
+    </div>
+    
+    <!-- FPS Counter -->
+    <div id="fps-counter" style="display: none;">FPS: 0</div>
+    
+    <!-- Audio Controls -->
+    <div id="audio-controls" style="display: none;">
+        <span>Sound: </span>
+        <input type="range" id="volume-slider" min="0" max="100" value="70">
+        <span id="volume-value">70%</span>
+    </div>
+    
+    <!-- Audio Elements -->
+    <audio id="fluorescent-buzz" loop preload="auto">
+        <source src="fluorescent.mp3" type="audio/mpeg">
+    </audio>
+    
+    <!-- Include Three.js and PointerLockControls via CDN -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.174.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.174.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+        // Loading screen elements
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingBar = document.getElementById('loading-bar');
+        const loadingProgressElement = document.getElementById('loading-progress');
+        const startButton = document.getElementById('start-button');
+        const fpsCounter = document.getElementById('fps-counter');
+        
+        // Game state
+        let gameStarted = false;
+        let audioInitialized = false;
+        
+        // VHS Shader
+        const VHSShader = {
+            uniforms: {
+                "tDiffuse": { value: null },
+                "time": { value: 0.0 },
+                "distortion": { value: 0.8 },
+                "noise": { value: 0.5 },
+                "lineSpeed": { value: 0.6 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D tDiffuse;
+                uniform float time;
+                uniform float distortion;
+                uniform float noise;
+                uniform float lineSpeed;
+                varying vec2 vUv;
+
+                float random(vec2 st) {
+                    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+                }
+
+                void main() {
+                    vec2 uv = vUv;
+                    
+                    float verticalDisplace = sin(uv.y * 10.0 + time * lineSpeed) * 0.0008;
+                    uv.x += verticalDisplace * distortion;
+
+                    vec4 baseColor = texture2D(tDiffuse, uv);
+                    float r = texture2D(tDiffuse, uv + vec2(0.003, 0.0) * distortion).r;
+                    float g = baseColor.g;
+                    float b = texture2D(tDiffuse, uv - vec2(0.003, 0.0) * distortion).b;
+
+                    float noiseValue = random(uv + vec2(time * 0.1));
+                    vec4 color = vec4(r, g, b, 1.0);
+                    color.rgb = mix(color.rgb, vec3(noiseValue), noise * 0.08);
+
+                    float scanline = sin(uv.y * 900.0 + time * 5.0) * 0.015;
+                    color.rgb += scanline;
+
+                    float glitchTime = floor(time * 0.8);
+                    float glitchPos = random(vec2(glitchTime));
+                    if (random(vec2(glitchTime * 0.1)) > 0.99 && 
+                        abs(uv.y - glitchPos) < 0.03) {
+                        uv.x += (random(vec2(glitchTime)) * 2.0 - 1.0) * 0.03;
+                        color = texture2D(tDiffuse, uv);
+                    }
+
+                    gl_FragColor = color;
+                }
+            `
+        };
+
+        // Union-Find class for maze generation
+        class UnionFind {
+            constructor(size) {
+                this.parent = new Array(size);
+                this.rank = new Array(size);
+                for (let i = 0; i < size; i++) {
+                    this.parent[i] = i;
+                    this.rank[i] = 0;
+                }
+            }
+            find(x) {
+                if (this.parent[x] !== x) {
+                    this.parent[x] = this.find(this.parent[x]);
+                }
+                return this.parent[x];
+            }
+            union(x, y) {
+                let rootX = this.find(x);
+                let rootY = this.find(y);
+                if (rootX === rootY) return false;
+                if (this.rank[rootX] < this.rank[rootY]) {
+                    this.parent[rootX] = rootY;
+                } else if (this.rank[rootX] > this.rank[rootY]) {
+                    this.parent[rootY] = rootX;
+                } else {
+                    this.parent[rootY] = rootX;
+                    this.rank[rootX]++;
+                }
+                return true;
+            }
+        }
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        document.body.appendChild(renderer.domElement);
+
+        // Post-processing setup
+        const composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        const vhsPass = new ShaderPass(VHSShader);
+        composer.addPass(vhsPass);
+
+        // Camera container for roll effect
+        const cameraContainer = new THREE.Object3D();
+        scene.add(cameraContainer);
+        cameraContainer.add(camera);
+        camera.position.set(0, 0, 0);
+
+        // PointerLockControls
+        const controls = new PointerLockControls(cameraContainer, renderer.domElement);
+        
+        document.addEventListener('click', () => {
+            if (gameStarted) {
+                controls.lock();
+            }
+        });
+        
+        controls.addEventListener('lock', () => {
+            if (gameStarted && uiVisible) {
+                document.getElementById('game-ui').style.display = 'block';
+            }
+        });
+        
+        controls.addEventListener('unlock', () => {
+            if (gameStarted && uiVisible) {
+                document.getElementById('game-ui').style.display = 'block';
+            }
+        });
+
+        // Movement flags
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let isRunning = false;
+        let isCrouching = false;
+        let uiVisible = false;
+
+        // Audio elements
+        const fluorescentBuzz = document.getElementById('fluorescent-buzz');
+        
+        // Create step sound elements dynamically
+        const stepSounds = [];
+        const STEP_COUNT = 12;
+        
+        for (let i = 1; i <= STEP_COUNT; i++) {
+            const stepSound = new Audio(`steps/step${i}.mp3`);
+            stepSound.preload = 'auto';
+            stepSounds.push(stepSound);
+        }
+        
+        const volumeSlider = document.getElementById('volume-slider');
+        const volumeValue = document.getElementById('volume-value');
+        let masterVolume = 0.7; // 70% default volume
+        let footstepVolume = 0.5; // Footstep volume relative to master
+        let lastStepTime = 0;
+        let lastStepIndex = -1;
+        
+        // Set initial volume
+        fluorescentBuzz.volume = masterVolume;
+        stepSounds.forEach(sound => {
+            sound.volume = masterVolume * footstepVolume;
+        });
+        
+        // Initialize audio context and handle browser autoplay policy
+        let audioContext;
+        
+        function initAudio() {
+            if (audioInitialized) return;
+            
+            // Create audio context
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Try to resume audio context (needed for some browsers)
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            // Start playing the fluorescent buzz sound
+            fluorescentBuzz.play().then(() => {
+                console.log("Audio playback started successfully");
+                audioInitialized = true;
+            }).catch(error => {
+                console.log("Audio playback failed:", error);
+                // We'll try again when user interacts
+            });
+        }
+        
+        // Function to play a random footstep sound
+        function playFootstep() {
+            if (!audioInitialized) return;
+            
+            // Don't play a new step if any step sound is still playing
+            const isAnyStepPlaying = stepSounds.some(sound => !sound.paused && sound.currentTime < sound.duration - 0.05);
+            if (isAnyStepPlaying) return;
+            
+            // Choose a random step sound that's different from the last one
+            let stepIndex;
+            do {
+                stepIndex = Math.floor(Math.random() * stepSounds.length);
+            } while (stepIndex === lastStepIndex && stepSounds.length > 1);
+            
+            lastStepIndex = stepIndex;
+            
+            // Reset the audio to the beginning and play it
+            const stepSound = stepSounds[stepIndex];
+            stepSound.currentTime = 0;
+            stepSound.volume = masterVolume * footstepVolume;
+            
+            stepSound.play().catch(e => {
+                console.log("Couldn't play step sound:", e);
+            });
+        }
+        
+        // Add event listeners to initialize audio on user interaction
+        document.addEventListener('click', initAudio, { once: false });
+        document.addEventListener('keydown', initAudio, { once: false });
+        document.addEventListener('touchstart', initAudio, { once: false });
+        
+        // Volume control
+        volumeSlider.addEventListener('input', () => {
+            masterVolume = volumeSlider.value / 100;
+            volumeValue.textContent = `${volumeSlider.value}%`;
+            fluorescentBuzz.volume = masterVolume;
+            stepSounds.forEach(sound => {
+                sound.volume = masterVolume * footstepVolume;
+            });
+        });
+        
+        // Show/hide audio controls with UI
+        document.addEventListener('keydown', (event) => {
+            if (!gameStarted) return;
+            
+            switch (event.code) {
+                case 'KeyW': moveForward = true; break;
+                case 'KeyS': moveBackward = true; break;
+                case 'KeyA': moveLeft = true; break;
+                case 'KeyD': moveRight = true; break;
+                case 'ShiftLeft': 
+                case 'ShiftRight': 
+                    isRunning = true; 
+                    break;
+                case 'ControlLeft':
+                case 'ControlRight':
+                    if (!isCrouching) {
+                        isCrouching = true;
+                        camera.position.y -= 0.5;
+                        playerPosition.y -= 0.5;
+                    }
+                    break;
+                case 'KeyH':
+                    uiVisible = !uiVisible;
+                    document.getElementById('game-ui').style.display = uiVisible ? 'block' : 'none';
+                    document.getElementById('fps-counter').style.display = uiVisible ? 'block' : 'none';
+                    document.getElementById('audio-controls').style.display = uiVisible ? 'block' : 'none';
+                    break;
+                case 'KeyM':
+                    // Toggle mute
+                    fluorescentBuzz.muted = !fluorescentBuzz.muted;
+                    break;
+                case 'KeyR':
+                    // Force restart audio
+                    if (fluorescentBuzz.paused) {
+                        fluorescentBuzz.play().catch(e => console.log("Couldn't restart audio:", e));
+                    }
+                    break;
+            }
+        });
+        
+        document.addEventListener('keyup', (event) => {
+            if (!gameStarted) return;
+            
+            switch (event.code) {
+                case 'KeyW': moveForward = false; break;
+                case 'KeyS': moveBackward = false; break;
+                case 'KeyA': moveLeft = false; break;
+                case 'KeyD': moveRight = false; break;
+                case 'ShiftLeft': 
+                case 'ShiftRight': 
+                    isRunning = false; 
+                    break;
+                case 'ControlLeft':
+                case 'ControlRight':
+                    if (isCrouching) {
+                        isCrouching = false;
+                        camera.position.y += 0.5;
+                        playerPosition.y += 0.5;
+                    }
+                    break;
+            }
+        });
+
+        const clock = new THREE.Clock();
+        const walls = [];
+
+        // Maze parameters
+        const N = 10;
+        const M = 10;
+        const roomSize = 6;
+
+        // Initialize wall arrays
+        const horizontalWalls = Array.from({ length: N - 1 }, () => Array(M).fill(true));
+        const verticalWalls = Array.from({ length: N }, () => Array(M - 1).fill(true));
+
+        // Generate wall list
+        const wallList = [];
+        for (let k = 0; k < N - 1; k++) {
+            for (let j = 0; j < M; j++) {
+                const roomA = k * M + j;
+                const roomB = (k + 1) * M + j;
+                wallList.push({ type: 'horizontal', k, j, rooms: [roomA, roomB] });
+            }
+        }
+        for (let i = 0; i < N; i++) {
+            for (let l = 0; l < M - 1; l++) {
+                const roomA = i * M + l;
+                const roomB = i * M + (l + 1);
+                wallList.push({ type: 'vertical', i, l, rooms: [roomA, roomB] });
+            }
+        }
+
+        // Shuffle walls
+        wallList.sort(() => Math.random() - 0.5);
+
+        // Generate maze using Union-Find
+        const uf = new UnionFind(N * M);
+        let components = N * M;
+        let index = 0;
+        while (components > 1 && index < wallList.length) {
+            const wall = wallList[index];
+            const [roomA, roomB] = wall.rooms;
+            if (uf.union(roomA, roomB)) {
+                if (wall.type === 'horizontal') {
+                    horizontalWalls[wall.k][wall.j] = false;
+                } else {
+                    verticalWalls[wall.i][wall.l] = false;
+                }
+                components--;
+            }
+            index++;
+        }
+
+        // Randomly remove extra walls (8% chance)
+        for (let k = 0; k < N - 1; k++) {
+            for (let j = 0; j < M; j++) {
+                if (horizontalWalls[k][j] && Math.random() < 0.08) {
+                    horizontalWalls[k][j] = false;
+                }
+            }
+        }
+        for (let i = 0; i < N; i++) {
+            for (let l = 0; l < M - 1; l++) {
+                if (verticalWalls[i][l] && Math.random() < 0.08) {
+                    verticalWalls[i][l] = false;
+                }
+            }
+        }
+
+        // Texture generation
+        const createWallpaperTexture = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            canvas.width = size;
+            canvas.height = size;
+
+            ctx.fillStyle = '#e9e566';
+            ctx.fillRect(0, 0, size, size);
+
+            const stripeWidth = size / 20;
+            ctx.fillStyle = '#d6d259';
+            for (let i = 0; i < 20; i += 2) {
+                ctx.fillRect(i * stripeWidth, 0, stripeWidth, size);
+            }
+
+            ctx.fillStyle = '#c8c44d';
+            const thinLineWidth = stripeWidth * 0.2;
+            for (let i = 1; i < 20; i += 2) {
+                const xPos = i * stripeWidth + (stripeWidth - thinLineWidth) / 2;
+                ctx.fillRect(xPos, 0, thinLineWidth, size);
+            }
+
+            const arrowHeight = size / 25;
+            const arrowWidth = stripeWidth * 0.8;
+            ctx.fillStyle = '#c8c44d';
+
+            for (let y = 0; y < size; y += arrowHeight * 2) {
+                for (let x = stripeWidth / 2; x < size; x += stripeWidth * 2) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x + arrowWidth / 2, y + arrowHeight);
+                    ctx.lineTo(x, y + arrowHeight * 2);
+                    ctx.lineTo(x - arrowWidth / 2, y + arrowHeight);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        };
+
+        const createCeilingTexture = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            canvas.width = size;
+            canvas.height = size;
+
+            ctx.fillStyle = '#fffacd';
+            ctx.fillRect(0, 0, size, size);
+
+            ctx.strokeStyle = '#d6d259';
+            ctx.lineWidth = 2;
+            const gridCount = 8;
+            const gridSize = size / gridCount;
+
+            for (let i = 0; i <= gridCount; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, i * gridSize);
+                ctx.lineTo(size, i * gridSize);
+                ctx.stroke();
+            }
+
+            for (let i = 0; i <= gridCount; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * gridSize, 0);
+                ctx.lineTo(i * gridSize, size);
+                ctx.stroke();
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        };
+
+        const createNormalMap = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            canvas.width = size;
+            canvas.height = size;
+
+            ctx.fillStyle = '#8080ff';
+            ctx.fillRect(0, 0, size, size);
+
+            for (let i = 0; i < 200; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const radius = 2 + Math.random() * 5;
+
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+                gradient.addColorStop(0, '#7878ff');
+                gradient.addColorStop(1, '#8080ff');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        };
+
+        const createFloorTexture = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            canvas.width = size;
+            canvas.height = size;
+
+            ctx.fillStyle = '#a68f3e';
+            ctx.fillRect(0, 0, size, size);
+
+            const imageData = ctx.getImageData(0, 0, size, size);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const noise = (Math.random() - 0.5) * 10;
+                data[i]   += noise;
+                data[i+1] += noise;
+                data[i+2] += noise;
+            }
+            ctx.putImageData(imageData, 0, 0);
+
+            return new THREE.CanvasTexture(canvas);
+        };
+
+        const createFloorNormalMap = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 512;
+            canvas.width = size;
+            canvas.height = size;
+
+            ctx.fillStyle = '#8080ff';
+            ctx.fillRect(0, 0, size, size);
+
+            for (let i = 0; i < 200; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const radius = 2 + Math.random() * 8;
+
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+                gradient.addColorStop(0, '#7878ff');
+                gradient.addColorStop(1, '#8080ff');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        };
+
+        const wallTexture = createWallpaperTexture();
+        wallTexture.wrapS = THREE.RepeatWrapping;
+        wallTexture.wrapT = THREE.RepeatWrapping;
+        wallTexture.repeat.set(2, 1);
+
+        const ceilingTexture = createCeilingTexture();
+        ceilingTexture.wrapS = THREE.RepeatWrapping;
+        ceilingTexture.wrapT = THREE.RepeatWrapping;
+        ceilingTexture.repeat.set(M, N);
+
+        const normalMap = createNormalMap();
+
+        const floorTexture = createFloorTexture();
+        floorTexture.wrapS = THREE.RepeatWrapping;
+        floorTexture.wrapT = THREE.RepeatWrapping;
+        floorTexture.repeat.set(N, N);
+
+        const floorNormalMap = createFloorNormalMap();
+        floorNormalMap.wrapS = THREE.RepeatWrapping;
+        floorNormalMap.wrapT = THREE.RepeatWrapping;
+        floorNormalMap.repeat.set(N, N);
+
+        const wallMaterial = new THREE.MeshStandardMaterial({
+            map: wallTexture,
+            normalMap: normalMap,
+            normalScale: new THREE.Vector2(0.5, 0.5),
+            roughness: 0.7,
+            metalness: 0.1,
+            envMapIntensity: 1.0,
+            color: 0xffffff
+        });
+
+        // Starting room and hallway parameters
+        const startingRoomWidth = 10;
+        const startingRoomDepth = 10;
+        const hallwayWidth = 4;
+        const hallwayLength = 100;
+
+        // Create the starting room
+        function createStartingRoom() {
+            const roomWalls = [
+                new THREE.Mesh(
+                    new THREE.BoxGeometry(0.3, 5, startingRoomDepth),
+                    wallMaterial
+                ),
+                new THREE.Mesh(
+                    new THREE.BoxGeometry(0.3, 5, startingRoomDepth),
+                    wallMaterial
+                ),
+                new THREE.Mesh(
+                    new THREE.BoxGeometry(startingRoomWidth, 5, 0.3),
+                    wallMaterial
+                ),
+                new THREE.Mesh(
+                    new THREE.BoxGeometry((startingRoomWidth - hallwayWidth) / 2, 5, 0.3),
+                    wallMaterial
+                ),
+                new THREE.Mesh(
+                    new THREE.BoxGeometry((startingRoomWidth - hallwayWidth) / 2, 5, 0.3),
+                    wallMaterial
+                )
+            ];
+
+            roomWalls[0].position.set(0, 2.5, startingRoomDepth / 2); // Left wall
+            roomWalls[1].position.set(startingRoomWidth, 2.5, startingRoomDepth / 2); // Right wall
+            roomWalls[2].position.set(startingRoomWidth / 2, 2.5, 0); // Back wall
+            roomWalls[3].position.set((startingRoomWidth - hallwayWidth) / 4, 2.5, startingRoomDepth); // Left front wall
+            roomWalls[4].position.set(startingRoomWidth - (startingRoomWidth - hallwayWidth) / 4, 2.5, startingRoomDepth); // Right front wall
+
+            roomWalls.forEach(wall => {
+                scene.add(wall);
+                walls.push(wall);
+            });
+
+            return roomWalls;
+        }
+
+        // Create the hallway
+        function createHallway() {
+            const hallwayWalls = [
+                new THREE.Mesh(
+                    new THREE.BoxGeometry(0.3, 5, hallwayLength),
+                    wallMaterial
+                ),
+                new THREE.Mesh(
+                    new THREE.BoxGeometry(0.3, 5, hallwayLength),
+                    wallMaterial
+                )
+            ];
+
+            const hallwayStartZ = startingRoomDepth;
+            const hallwayStartX = (startingRoomWidth - hallwayWidth) / 2;
+            
+            hallwayWalls[0].position.set(hallwayStartX, 2.5, hallwayStartZ + hallwayLength / 2); // Left wall
+            hallwayWalls[1].position.set(hallwayStartX + hallwayWidth, 2.5, hallwayStartZ + hallwayLength / 2); // Right wall
+
+            hallwayWalls.forEach(wall => {
+                scene.add(wall);
+                walls.push(wall);
+            });
+
+            return hallwayWalls;
+        }
+
+        // Outer walls for procedural maze
+        const mazeOffsetZ = startingRoomDepth + hallwayLength;
+        
+        // Calculate hallway end position
+        const hallwayEndX = (startingRoomWidth - hallwayWidth) / 2;
+        const hallwayCenterX = hallwayEndX + hallwayWidth / 2;
+        
+        // Create outer walls for the maze, with a gap for the hallway entrance
+        const outerWalls = [];
+        
+        // Left section of front wall
+        if (hallwayEndX > 0) {
+            const leftWall = new THREE.Mesh(
+                new THREE.BoxGeometry(hallwayEndX, 5, 0.3),
+                wallMaterial
+            );
+            leftWall.position.set(hallwayEndX / 2, 2.5, mazeOffsetZ);
+            scene.add(leftWall);
+            walls.push(leftWall);
+            outerWalls.push(leftWall);
+        }
+        
+        // Right section of front wall
+        const rightStartX = hallwayEndX + hallwayWidth;
+        if (rightStartX < M * roomSize) {
+            const rightWall = new THREE.Mesh(
+                new THREE.BoxGeometry(M * roomSize - rightStartX, 5, 0.3),
+                wallMaterial
+            );
+            rightWall.position.set(rightStartX + (M * roomSize - rightStartX) / 2, 2.5, mazeOffsetZ);
+            scene.add(rightWall);
+            walls.push(rightWall);
+            outerWalls.push(rightWall);
+        }
+        
+        // Back wall
+        const backWall = new THREE.Mesh(
+            new THREE.BoxGeometry(M * roomSize, 5, 0.3),
+            wallMaterial
+        );
+        backWall.position.set(M * roomSize / 2, 2.5, mazeOffsetZ + N * roomSize);
+        scene.add(backWall);
+        walls.push(backWall);
+        outerWalls.push(backWall);
+        
+        // Left wall
+        const leftSideWall = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 5, N * roomSize),
+            wallMaterial
+        );
+        leftSideWall.position.set(0, 2.5, mazeOffsetZ + N * roomSize / 2);
+        scene.add(leftSideWall);
+        walls.push(leftSideWall);
+        outerWalls.push(leftSideWall);
+        
+        // Right wall
+        const rightSideWall = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 5, N * roomSize),
+            wallMaterial
+        );
+        rightSideWall.position.set(M * roomSize, 2.5, mazeOffsetZ + N * roomSize / 2);
+        scene.add(rightSideWall);
+        walls.push(rightSideWall);
+        outerWalls.push(rightSideWall);
+        
+        // Add transition walls to connect hallway to maze if needed
+        if (hallwayEndX > 0 || hallwayEndX + hallwayWidth < M * roomSize) {
+            // Left transition wall
+            const leftTransWall = new THREE.Mesh(
+                new THREE.BoxGeometry(0.3, 5, 2),
+                wallMaterial
+            );
+            leftTransWall.position.set(hallwayEndX, 2.5, mazeOffsetZ + 1);
+            scene.add(leftTransWall);
+            walls.push(leftTransWall);
+            
+            // Right transition wall
+            const rightTransWall = new THREE.Mesh(
+                new THREE.BoxGeometry(0.3, 5, 2),
+                wallMaterial
+            );
+            rightTransWall.position.set(hallwayEndX + hallwayWidth, 2.5, mazeOffsetZ + 1);
+            scene.add(rightTransWall);
+            walls.push(rightTransWall);
+        }
+
+        // Inner horizontal walls
+        for (let k = 0; k < N - 1; k++) {
+            for (let j = 0; j < M; j++) {
+                if (horizontalWalls[k][j]) {
+                    const wall = new THREE.Mesh(
+                        new THREE.BoxGeometry(roomSize, 5, 0.3),
+                        wallMaterial
+                    );
+                    wall.position.set((j + 0.5) * roomSize, 2.5, mazeOffsetZ + (k + 1) * roomSize);
+                    scene.add(wall);
+                    walls.push(wall);
+                }
+            }
+        }
+
+        // Inner vertical walls
+        for (let i = 0; i < N; i++) {
+            for (let l = 0; l < M - 1; l++) {
+                if (verticalWalls[i][l]) {
+                    const wall = new THREE.Mesh(
+                        new THREE.BoxGeometry(0.3, 5, roomSize),
+                        wallMaterial
+                    );
+                    wall.position.set((l + 1) * roomSize, 2.5, mazeOffsetZ + (i + 0.5) * roomSize);
+                    scene.add(wall);
+                    walls.push(wall);
+                }
+            }
+        }
+
+        // Create starting room and hallway
+        createStartingRoom();
+        createHallway();
+
+        // Compute bounding boxes for collision after all walls are added
+        walls.forEach(wall => {
+            wall.geometry.computeBoundingBox();
+            wall.updateMatrixWorld(true); // Ensure the world matrix is updated
+            wall.worldBoundingBox = new THREE.Box3().copy(wall.geometry.boundingBox).applyMatrix4(wall.matrixWorld);
+        });
+
+        // Floor and ceiling
+        const mapWidth = Math.max(startingRoomWidth, M * roomSize);
+        const mapDepth = startingRoomDepth + hallwayLength + N * roomSize;
+        const floorSize = Math.max(mapWidth, mapDepth) + 20;
+
+        const floorMaterial = new THREE.MeshStandardMaterial({
+            map: floorTexture,
+            normalMap: floorNormalMap,
+            normalScale: new THREE.Vector2(0.5, 0.5),
+            roughness: 0.9,
+            metalness: 0.1,
+            envMapIntensity: 1.0
+        });
+
+        const ceilingMaterial = new THREE.MeshStandardMaterial({
+            map: ceilingTexture,
+            color: 0xf5e6a3,
+            roughness: 0.9,
+            metalness: 0.0,
+            envMapIntensity: 1.0
+        });
+
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(floorSize, floorSize),
+            floorMaterial
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.set(floorSize / 2, 0, floorSize / 2);
+        scene.add(floor);
+
+        const ceiling = new THREE.Mesh(
+            new THREE.PlaneGeometry(floorSize, floorSize),
+            ceilingMaterial
+        );
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.set(floorSize / 2, 5, floorSize / 2);
+        scene.add(ceiling);
+
+        // Square lights
+        const lights = [];
+        for (let i = 0; i < N; i++) {
+            for (let j = 0; j < M; j++) {
+                const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
+                const lightMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    side: THREE.DoubleSide
+                });
+
+                const lightPanel = new THREE.Mesh(lightGeometry, lightMaterial);
+                lightPanel.position.set((j + 0.5) * roomSize, 4.99, mazeOffsetZ + (i + 0.5) * roomSize);
+                lightPanel.rotation.x = Math.PI / 2;
+                scene.add(lightPanel);
+
+                const light = new THREE.PointLight(0xffffee, 5, 20);
+                light.position.set((j + 0.5) * roomSize, 4.5, mazeOffsetZ + (i + 0.5) * roomSize);
+                scene.add(light);
+                lights.push(light);
+            }
+        }
+
+        // Starting room and hallway lights
+        for (let x = 2; x < startingRoomWidth; x += 4) {
+            for (let z = 2; z < startingRoomDepth; z += 4) {
+                const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
+                const lightMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    side: THREE.DoubleSide
+                });
+
+                const lightPanel = new THREE.Mesh(lightGeometry, lightMaterial);
+                lightPanel.position.set(x, 4.99, z);
+                lightPanel.rotation.x = Math.PI / 2;
+                scene.add(lightPanel);
+
+                const light = new THREE.PointLight(0xffffee, 5, 20);
+                light.position.set(x, 4.5, z);
+                scene.add(light);
+                lights.push(light);
+            }
+        }
+
+        const hallwayStartZ = startingRoomDepth;
+        const hallwayStartX = (startingRoomWidth - hallwayWidth) / 2;
+        for (let z = hallwayStartZ + 4; z < hallwayStartZ + hallwayLength; z += 6) {
+            const x = hallwayStartX + hallwayWidth / 2;
+            
+            const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
+            const lightMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                side: THREE.DoubleSide
+            });
+
+            const lightPanel = new THREE.Mesh(lightGeometry, lightMaterial);
+            lightPanel.position.set(x, 4.99, z);
+            lightPanel.rotation.x = Math.PI / 2;
+            scene.add(lightPanel);
+
+            const light = new THREE.PointLight(0xffffee, 5, 20);
+            light.position.set(x, 4.5, z);
+            scene.add(light);
+            lights.push(light);
+        }
+
+        // Player and camera shake setup
+        let playerPosition = new THREE.Vector3(startingRoomWidth / 2, 1.6, startingRoomDepth / 2);
+        const offset = new THREE.Vector3(0, 0, 0);
+        let currentIntensity = 0.005;
+        const restingIntensity = 0.005;
+        const movingIntensity = 0.25;
+        const runningIntensity = 0.4;
+        const crouchingIntensity = 0.15;
+        const transitionSpeed = 5;
+        const playerRadius = 0.3;
+        
+        let walkCycle = 0;
+        const walkFrequency = 7.0;
+        const walkAmplitude = 0.09;
+        const headBobAmplitude = 0.03;
+        const walkLeanAmount = 0.07;
+        const cameraRollAmount = 0.02;
+        
+        const walkSpeed = 5;
+        const runSpeed = 8;
+        const crouchSpeed = 2.5;
+        
+        let bobFactor = 0;
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        let frameCount = 0;
+        let lastTime = 0;
+        let fps = 0;
+        
+        let loadingProgressValue = 0;
+        const loadingInterval = setInterval(() => {
+            loadingProgressValue += Math.random() * 10;
+            if (loadingProgressValue >= 100) {
+                loadingProgressValue = 100;
+                clearInterval(loadingInterval);
+                
+                loadingBar.style.width = '100%';
+                loadingProgressElement.textContent = '100%';
+                
+                setTimeout(() => {
+                    gameStarted = true;
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                        controls.lock();
+                        
+                        // Initialize audio when game starts
+                        initAudio();
+                        
+                        // Don't show audio controls at start since UI is hidden
+                        // document.getElementById('audio-controls').style.display = uiVisible ? 'block' : 'none';
+                    }, 1000);
+                    
+                    clock.start();
+                    animate();
+                }, 500);
+            } else {
+                loadingBar.style.width = `${loadingProgressValue}%`;
+                loadingProgressElement.textContent = `${Math.floor(loadingProgressValue)}%`;
+            }
+        }, 200);
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            frameCount++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                fps = Math.round((frameCount * 1000) / (now - lastTime));
+                fpsCounter.textContent = `FPS: ${fps}`;
+                frameCount = 0;
+                lastTime = now;
+            }
+            
+            if (!gameStarted) return;
+            
+            const delta = clock.getDelta();
+            const currentTime = clock.getElapsedTime();
+            
+            let speed = walkSpeed;
+            if (isRunning && !isCrouching) {
+                speed = runSpeed;
+            } else if (isCrouching) {
+                speed = crouchSpeed;
+            }
+            
+            const distance = speed * delta;
+
+            vhsPass.uniforms["time"].value += delta;
+
+            const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+            
+            // Handle footstep sounds
+            if (isMoving && audioInitialized) {
+                // Calculate step interval based on movement type
+                let stepInterval = 0.65; // Default walking interval (accounting for 200ms sound length)
+                
+                if (isRunning && !isCrouching) {
+                    stepInterval = 0.45; // Faster steps when running
+                } else if (isCrouching) {
+                    stepInterval = 0.9; // Slower steps when crouching
+                }
+                
+                // Play footstep sound at appropriate intervals
+                if (currentTime - lastStepTime >= stepInterval) {
+                    playFootstep();
+                    lastStepTime = currentTime;
+                }
+            } else {
+                // Reset step timer when not moving to ensure immediate step when movement resumes
+                lastStepTime = currentTime - 1.0;
+            }
+            
+            let targetIntensity = restingIntensity;
+            if (isMoving) {
+                if (isRunning && !isCrouching) {
+                    targetIntensity = runningIntensity;
+                } else if (isCrouching) {
+                    targetIntensity = crouchingIntensity;
+                } else {
+                    targetIntensity = movingIntensity;
+                }
+            }
+            
+            currentIntensity += (targetIntensity - currentIntensity) * transitionSpeed * delta;
+            
+            if (isMoving) {
+                bobFactor = Math.min(bobFactor + delta * 2.5, 1);
+            } else {
+                bobFactor = Math.max(bobFactor - delta * 2.0, 0);
+            }
+            
+            const cycleSpeed = walkFrequency * (isRunning && !isCrouching ? 1.5 : 1.0) * (isCrouching ? 0.7 : 1.0);
+            walkCycle += cycleSpeed * delta;
+            
+            if (walkCycle > Math.PI * 2) {
+                walkCycle -= Math.PI * 2;
+            }
+            
+            offset.set(0, 0, 0);
+            
+            let amplitudeMultiplier = bobFactor;
+            if (isRunning && !isCrouching) {
+                amplitudeMultiplier *= 1.3;
+            } else if (isCrouching) {
+                amplitudeMultiplier *= 0.4;
+            }
+            
+            offset.y = Math.sin(walkCycle) * walkAmplitude * amplitudeMultiplier;
+            offset.x = Math.cos(walkCycle) * headBobAmplitude * amplitudeMultiplier;
+            offset.z = Math.sin(walkCycle * 2) * walkLeanAmount * amplitudeMultiplier;
+            
+            const targetRoll = Math.sin(walkCycle * 1.5) * cameraRollAmount * amplitudeMultiplier;
+            
+            const randomScale = 0.003 * currentIntensity * (bobFactor * 0.8 + 0.2);
+            offset.x += (Math.random() - 0.5) * randomScale * 1.5;
+            offset.y += (Math.random() - 0.5) * randomScale * 1.5;
+            offset.z += (Math.random() - 0.5) * randomScale * 1.5;
+            
+            if (bobFactor < 0.5) {
+                const breathingStrength = (1 - bobFactor * 2) * 0.001;
+                offset.y += Math.sin(clock.elapsedTime * 1.2) * breathingStrength;
+            }
+
+            const prevPlayerPosition = playerPosition.clone();
+
+            if (moveForward)  controls.moveForward(distance);
+            if (moveBackward) controls.moveForward(-distance);
+            if (moveLeft)     controls.moveRight(-distance);
+            if (moveRight)    controls.moveRight(distance);
+
+            playerPosition.copy(cameraContainer.position);
+            
+            if (isCrouching) {
+                playerPosition.y = 1.1;
+            } else {
+                playerPosition.y = 1.6;
+            }
+            cameraContainer.position.y = playerPosition.y;
+
+            // Improved collision detection
+            const playerSphere = new THREE.Sphere(playerPosition, playerRadius);
+            let collision = false;
+            
+            for (const wall of walls) {
+                // Use a more accurate collision check
+                if (wall.worldBoundingBox && wall.worldBoundingBox.intersectsSphere(playerSphere)) {
+                    collision = true;
+                    break;
+                }
+            }
+            
+            if (collision) {
+                playerPosition.copy(prevPlayerPosition);
+                cameraContainer.position.copy(playerPosition);
+            }
+
+            camera.position.copy(offset);
+            camera.rotation.z = camera.rotation.z * 0.85 + targetRoll * 0.15;
+
+            // Update audio based on player position
+            updateAudio();
+
+            composer.render();
+        }
+
+        // Function to calculate distance to nearest light
+        function getDistanceToNearestLight(position) {
+            let minDistance = Infinity;
+            for (const light of lights) {
+                const distance = position.distanceTo(light.position);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                }
+            }
+            return minDistance;
+        }
+        
+        // Function to update audio based on player position
+        function updateAudio() {
+            if (!fluorescentBuzz.paused) {
+                const distanceToLight = getDistanceToNearestLight(playerPosition);
+                const maxDistance = 15;
+                const minDistance = 2;
+                
+                // Calculate volume based on distance
+                let distanceVolume = 1.0;
+                if (distanceToLight > minDistance) {
+                    distanceVolume = Math.max(0, 1 - ((distanceToLight - minDistance) / (maxDistance - minDistance)));
+                }
+                
+                // Apply master volume and distance-based volume
+                fluorescentBuzz.volume = masterVolume * distanceVolume;
+                
+                // Add slight random fluctuation to simulate unstable lights
+                if (Math.random() < 0.05) {
+                    const fluctuation = 0.95 + Math.random() * 0.1; // 0.95 to 1.05
+                    fluorescentBuzz.volume *= fluctuation;
+                }
+            } else if (gameStarted && !fluorescentBuzz.muted) {
+                // Try to restart audio if it stopped unexpectedly
+                fluorescentBuzz.play().catch(e => console.log("Couldn't restart audio in update:", e));
+            }
+            
+            // Update footstep volume based on master volume
+            stepSounds.forEach(sound => {
+                sound.volume = masterVolume * footstepVolume;
+            });
+        }
+    </script>
+</body>
+</html>
