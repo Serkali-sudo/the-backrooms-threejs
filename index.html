@@ -8,7 +8,6 @@
         body { margin: 0; overflow: hidden; }
         canvas { display: block; }
         
-        /* Loading Screen Styles */
         #loading-screen {
             position: fixed;
             top: 0;
@@ -71,7 +70,6 @@
             background-color: #fff;
         }
         
-        /* Game UI */
         #game-ui {
             position: fixed;
             bottom: 20px;
@@ -90,14 +88,13 @@
             color: #e9e566;
             font-family: monospace;
             font-size: 14px;
-            z-index:  получила10;
+            z-index: 10;
             text-shadow: 1px 1px 2px #000;
             background-color: rgba(0, 0, 0, 0.3);
             padding: 5px 10px;
             border-radius: 3px;
         }
         
-        /* Audio Controls */
         #audio-controls {
             position: fixed;
             bottom: 50px;
@@ -118,7 +115,6 @@
     </style>
 </head>
 <body>
-    <!-- Loading Screen -->
     <div id="loading-screen">
         <div id="loading-text">FALLING INTO THE BACKROOMS</div>
         <div id="loading-bar-container">
@@ -128,27 +124,22 @@
         <button id="start-button">ENTER</button>
     </div>
     
-    <!-- Game UI -->
     <div id="game-ui" style="display: none;">
         <div>WASD: Move | SHIFT: Run | CTRL: Crouch | CLICK: Look</div>
     </div>
     
-    <!-- FPS Counter -->
     <div id="fps-counter" style="display: none;">FPS: 0</div>
     
-    <!-- Audio Controls -->
     <div id="audio-controls" style="display: none;">
         <span>Sound: </span>
         <input type="range" id="volume-slider" min="0" max="100" value="70">
         <span id="volume-value">70%</span>
     </div>
     
-    <!-- Audio Elements -->
     <audio id="fluorescent-buzz" loop preload="auto">
         <source src="fluorescent.mp3" type="audio/mpeg">
     </audio>
     
-    <!-- Include Three.js and PointerLockControls via CDN -->
     <script type="importmap">
     {
         "imports": {
@@ -163,19 +154,18 @@
         import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'; // Add this line
 
-        // Loading screen elements
         const loadingScreen = document.getElementById('loading-screen');
         const loadingBar = document.getElementById('loading-bar');
         const loadingProgressElement = document.getElementById('loading-progress');
         const startButton = document.getElementById('start-button');
         const fpsCounter = document.getElementById('fps-counter');
         
-        // Game state
         let gameStarted = false;
         let audioInitialized = false;
         
-        // VHS Shader
         const VHSShader = {
             uniforms: {
                 "tDiffuse": { value: null },
@@ -205,7 +195,6 @@
 
                 void main() {
                     vec2 uv = vUv;
-                    
                     float verticalDisplace = sin(uv.y * 10.0 + time * lineSpeed) * 0.0008;
                     uv.x += verticalDisplace * distortion;
 
@@ -234,7 +223,6 @@
             `
         };
 
-        // Union-Find class for maze generation
         class UnionFind {
             constructor(size) {
                 this.parent = new Array(size);
@@ -266,7 +254,6 @@
             }
         }
 
-        // Scene setup
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer();
@@ -277,7 +264,6 @@
         renderer.toneMappingExposure = 1.0;
         document.body.appendChild(renderer.domElement);
 
-        // Post-processing setup
         const composer = new EffectComposer(renderer);
         const renderPass = new RenderPass(scene, camera);
         composer.addPass(renderPass);
@@ -285,13 +271,11 @@
         const vhsPass = new ShaderPass(VHSShader);
         composer.addPass(vhsPass);
 
-        // Camera container for roll effect
         const cameraContainer = new THREE.Object3D();
         scene.add(cameraContainer);
         cameraContainer.add(camera);
         camera.position.set(0, 0, 0);
 
-        // PointerLockControls
         const controls = new PointerLockControls(cameraContainer, renderer.domElement);
         
         document.addEventListener('click', () => {
@@ -312,16 +296,13 @@
             }
         });
 
-        // Movement flags
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
         let isRunning = false;
         let isCrouching = false;
         let uiVisible = false;
 
-        // Audio elements
         const fluorescentBuzz = document.getElementById('fluorescent-buzz');
         
-        // Create step sound elements dynamically
         const stepSounds = [];
         const STEP_COUNT = 12;
         
@@ -331,52 +312,58 @@
             stepSounds.push(stepSound);
         }
         
+        // Create companion footstep sounds
+        const companionStepSounds = [];
+        for (let i = 1; i <= STEP_COUNT; i++) {
+            const companionStepSound = new Audio(`steps/step${i}.mp3`);
+            companionStepSound.preload = 'auto';
+            // Make companion steps slightly quieter than player steps
+            companionStepSound.volume = 0.4;
+            companionStepSounds.push(companionStepSound);
+        }
+        
         const volumeSlider = document.getElementById('volume-slider');
         const volumeValue = document.getElementById('volume-value');
-        let masterVolume = 0.7; // 70% default volume
-        let footstepVolume = 0.5; // Footstep volume relative to master
+        let masterVolume = 0.7;
+        let footstepVolume = 0.5;
         let lastStepTime = 0;
         let lastStepIndex = -1;
+        let lastCompanionStepTime = 0;
+        let lastCompanionStepIndex = -1;
         
-        // Set initial volume
         fluorescentBuzz.volume = masterVolume;
         stepSounds.forEach(sound => {
             sound.volume = masterVolume * footstepVolume;
         });
+        companionStepSounds.forEach(sound => {
+            sound.volume = masterVolume * footstepVolume * 0.4; // Companion steps are quieter
+        });
         
-        // Initialize audio context and handle browser autoplay policy
         let audioContext;
         
         function initAudio() {
             if (audioInitialized) return;
             
-            // Create audio context
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             
-            // Try to resume audio context (needed for some browsers)
             if (audioContext.state === 'suspended') {
                 audioContext.resume();
             }
             
-            // Start playing the fluorescent buzz sound
             fluorescentBuzz.play().then(() => {
                 console.log("Audio playback started successfully");
                 audioInitialized = true;
             }).catch(error => {
                 console.log("Audio playback failed:", error);
-                // We'll try again when user interacts
             });
         }
         
-        // Function to play a random footstep sound
         function playFootstep() {
             if (!audioInitialized) return;
             
-            // Don't play a new step if any step sound is still playing
             const isAnyStepPlaying = stepSounds.some(sound => !sound.paused && sound.currentTime < sound.duration - 0.05);
             if (isAnyStepPlaying) return;
             
-            // Choose a random step sound that's different from the last one
             let stepIndex;
             do {
                 stepIndex = Math.floor(Math.random() * stepSounds.length);
@@ -384,7 +371,6 @@
             
             lastStepIndex = stepIndex;
             
-            // Reset the audio to the beginning and play it
             const stepSound = stepSounds[stepIndex];
             stepSound.currentTime = 0;
             stepSound.volume = masterVolume * footstepVolume;
@@ -394,12 +380,36 @@
             });
         }
         
-        // Add event listeners to initialize audio on user interaction
+        function playCompanionFootstep() {
+            if (!audioInitialized) return;
+            
+            const isAnyCompanionStepPlaying = companionStepSounds.some(sound => !sound.paused && sound.currentTime < sound.duration - 0.05);
+            if (isAnyCompanionStepPlaying) return;
+            
+            let stepIndex;
+            do {
+                stepIndex = Math.floor(Math.random() * companionStepSounds.length);
+            } while (stepIndex === lastCompanionStepIndex && companionStepSounds.length > 1);
+            
+            lastCompanionStepIndex = stepIndex;
+            
+            const stepSound = companionStepSounds[stepIndex];
+            stepSound.currentTime = 0;
+            stepSound.volume = masterVolume * footstepVolume * 0.4; // Quieter than player footsteps
+            
+            // Add slight pitch variation to differentiate from player footsteps
+            const pitchVariation = 0.9 + Math.random() * 0.2; // Between 0.9 and 1.1
+            stepSound.playbackRate = pitchVariation;
+            
+            stepSound.play().catch(e => {
+                console.log("Couldn't play companion step sound:", e);
+            });
+        }
+        
         document.addEventListener('click', initAudio, { once: false });
         document.addEventListener('keydown', initAudio, { once: false });
         document.addEventListener('touchstart', initAudio, { once: false });
         
-        // Volume control
         volumeSlider.addEventListener('input', () => {
             masterVolume = volumeSlider.value / 100;
             volumeValue.textContent = `${volumeSlider.value}%`;
@@ -407,9 +417,11 @@
             stepSounds.forEach(sound => {
                 sound.volume = masterVolume * footstepVolume;
             });
+            companionStepSounds.forEach(sound => {
+                sound.volume = masterVolume * footstepVolume * 0.4;
+            });
         });
         
-        // Show/hide audio controls with UI
         document.addEventListener('keydown', (event) => {
             if (!gameStarted) return;
             
@@ -437,11 +449,9 @@
                     document.getElementById('audio-controls').style.display = uiVisible ? 'block' : 'none';
                     break;
                 case 'KeyM':
-                    // Toggle mute
                     fluorescentBuzz.muted = !fluorescentBuzz.muted;
                     break;
                 case 'KeyR':
-                    // Force restart audio
                     if (fluorescentBuzz.paused) {
                         fluorescentBuzz.play().catch(e => console.log("Couldn't restart audio:", e));
                     }
@@ -475,16 +485,13 @@
         const clock = new THREE.Clock();
         const walls = [];
 
-        // Maze parameters
         const N = 10;
         const M = 10;
         const roomSize = 6;
 
-        // Initialize wall arrays
         const horizontalWalls = Array.from({ length: N - 1 }, () => Array(M).fill(true));
         const verticalWalls = Array.from({ length: N }, () => Array(M - 1).fill(true));
 
-        // Generate wall list
         const wallList = [];
         for (let k = 0; k < N - 1; k++) {
             for (let j = 0; j < M; j++) {
@@ -501,10 +508,8 @@
             }
         }
 
-        // Shuffle walls
         wallList.sort(() => Math.random() - 0.5);
 
-        // Generate maze using Union-Find
         const uf = new UnionFind(N * M);
         let components = N * M;
         let index = 0;
@@ -522,7 +527,6 @@
             index++;
         }
 
-        // Randomly remove extra walls (8% chance)
         for (let k = 0; k < N - 1; k++) {
             for (let j = 0; j < M; j++) {
                 if (horizontalWalls[k][j] && Math.random() < 0.08) {
@@ -538,7 +542,6 @@
             }
         }
 
-        // Texture generation
         const createWallpaperTexture = () => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -724,13 +727,11 @@
             color: 0xffffff
         });
 
-        // Starting room and hallway parameters
         const startingRoomWidth = 10;
         const startingRoomDepth = 10;
         const hallwayWidth = 4;
         const hallwayLength = 100;
 
-        // Create the starting room
         function createStartingRoom() {
             const roomWalls = [
                 new THREE.Mesh(
@@ -755,11 +756,11 @@
                 )
             ];
 
-            roomWalls[0].position.set(0, 2.5, startingRoomDepth / 2); // Left wall
-            roomWalls[1].position.set(startingRoomWidth, 2.5, startingRoomDepth / 2); // Right wall
-            roomWalls[2].position.set(startingRoomWidth / 2, 2.5, 0); // Back wall
-            roomWalls[3].position.set((startingRoomWidth - hallwayWidth) / 4, 2.5, startingRoomDepth); // Left front wall
-            roomWalls[4].position.set(startingRoomWidth - (startingRoomWidth - hallwayWidth) / 4, 2.5, startingRoomDepth); // Right front wall
+            roomWalls[0].position.set(0, 2.5, startingRoomDepth / 2);
+            roomWalls[1].position.set(startingRoomWidth, 2.5, startingRoomDepth / 2);
+            roomWalls[2].position.set(startingRoomWidth / 2, 2.5, 0);
+            roomWalls[3].position.set((startingRoomWidth - hallwayWidth) / 4, 2.5, startingRoomDepth);
+            roomWalls[4].position.set(startingRoomWidth - (startingRoomWidth - hallwayWidth) / 4, 2.5, startingRoomDepth);
 
             roomWalls.forEach(wall => {
                 scene.add(wall);
@@ -769,7 +770,6 @@
             return roomWalls;
         }
 
-        // Create the hallway
         function createHallway() {
             const hallwayWalls = [
                 new THREE.Mesh(
@@ -785,8 +785,8 @@
             const hallwayStartZ = startingRoomDepth;
             const hallwayStartX = (startingRoomWidth - hallwayWidth) / 2;
             
-            hallwayWalls[0].position.set(hallwayStartX, 2.5, hallwayStartZ + hallwayLength / 2); // Left wall
-            hallwayWalls[1].position.set(hallwayStartX + hallwayWidth, 2.5, hallwayStartZ + hallwayLength / 2); // Right wall
+            hallwayWalls[0].position.set(hallwayStartX, 2.5, hallwayStartZ + hallwayLength / 2);
+            hallwayWalls[1].position.set(hallwayStartX + hallwayWidth, 2.5, hallwayStartZ + hallwayLength / 2);
 
             hallwayWalls.forEach(wall => {
                 scene.add(wall);
@@ -796,17 +796,12 @@
             return hallwayWalls;
         }
 
-        // Outer walls for procedural maze
         const mazeOffsetZ = startingRoomDepth + hallwayLength;
-        
-        // Calculate hallway end position
         const hallwayEndX = (startingRoomWidth - hallwayWidth) / 2;
         const hallwayCenterX = hallwayEndX + hallwayWidth / 2;
         
-        // Create outer walls for the maze, with a gap for the hallway entrance
         const outerWalls = [];
         
-        // Left section of front wall
         if (hallwayEndX > 0) {
             const leftWall = new THREE.Mesh(
                 new THREE.BoxGeometry(hallwayEndX, 5, 0.3),
@@ -818,7 +813,6 @@
             outerWalls.push(leftWall);
         }
         
-        // Right section of front wall
         const rightStartX = hallwayEndX + hallwayWidth;
         if (rightStartX < M * roomSize) {
             const rightWall = new THREE.Mesh(
@@ -831,7 +825,6 @@
             outerWalls.push(rightWall);
         }
         
-        // Back wall
         const backWall = new THREE.Mesh(
             new THREE.BoxGeometry(M * roomSize, 5, 0.3),
             wallMaterial
@@ -841,7 +834,6 @@
         walls.push(backWall);
         outerWalls.push(backWall);
         
-        // Left wall
         const leftSideWall = new THREE.Mesh(
             new THREE.BoxGeometry(0.3, 5, N * roomSize),
             wallMaterial
@@ -851,7 +843,6 @@
         walls.push(leftSideWall);
         outerWalls.push(leftSideWall);
         
-        // Right wall
         const rightSideWall = new THREE.Mesh(
             new THREE.BoxGeometry(0.3, 5, N * roomSize),
             wallMaterial
@@ -861,9 +852,7 @@
         walls.push(rightSideWall);
         outerWalls.push(rightSideWall);
         
-        // Add transition walls to connect hallway to maze if needed
         if (hallwayEndX > 0 || hallwayEndX + hallwayWidth < M * roomSize) {
-            // Left transition wall
             const leftTransWall = new THREE.Mesh(
                 new THREE.BoxGeometry(0.3, 5, 2),
                 wallMaterial
@@ -872,7 +861,6 @@
             scene.add(leftTransWall);
             walls.push(leftTransWall);
             
-            // Right transition wall
             const rightTransWall = new THREE.Mesh(
                 new THREE.BoxGeometry(0.3, 5, 2),
                 wallMaterial
@@ -882,7 +870,6 @@
             walls.push(rightTransWall);
         }
 
-        // Inner horizontal walls
         for (let k = 0; k < N - 1; k++) {
             for (let j = 0; j < M; j++) {
                 if (horizontalWalls[k][j]) {
@@ -897,7 +884,6 @@
             }
         }
 
-        // Inner vertical walls
         for (let i = 0; i < N; i++) {
             for (let l = 0; l < M - 1; l++) {
                 if (verticalWalls[i][l]) {
@@ -912,18 +898,15 @@
             }
         }
 
-        // Create starting room and hallway
         createStartingRoom();
         createHallway();
 
-        // Compute bounding boxes for collision after all walls are added
         walls.forEach(wall => {
             wall.geometry.computeBoundingBox();
-            wall.updateMatrixWorld(true); // Ensure the world matrix is updated
+            wall.updateMatrixWorld(true);
             wall.worldBoundingBox = new THREE.Box3().copy(wall.geometry.boundingBox).applyMatrix4(wall.matrixWorld);
         });
 
-        // Floor and ceiling
         const mapWidth = Math.max(startingRoomWidth, M * roomSize);
         const mapDepth = startingRoomDepth + hallwayLength + N * roomSize;
         const floorSize = Math.max(mapWidth, mapDepth) + 20;
@@ -961,7 +944,6 @@
         ceiling.position.set(floorSize / 2, 5, floorSize / 2);
         scene.add(ceiling);
 
-        // Square lights
         const lights = [];
         for (let i = 0; i < N; i++) {
             for (let j = 0; j < M; j++) {
@@ -976,14 +958,13 @@
                 lightPanel.rotation.x = Math.PI / 2;
                 scene.add(lightPanel);
 
-                const light = new THREE.PointLight(0xffffee, 5, 20);
+                const light = new THREE.PointLight(0xffffee, 7, 20);
                 light.position.set((j + 0.5) * roomSize, 4.5, mazeOffsetZ + (i + 0.5) * roomSize);
                 scene.add(light);
                 lights.push(light);
             }
         }
 
-        // Starting room and hallway lights
         for (let x = 2; x < startingRoomWidth; x += 4) {
             for (let z = 2; z < startingRoomDepth; z += 4) {
                 const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
@@ -997,7 +978,7 @@
                 lightPanel.rotation.x = Math.PI / 2;
                 scene.add(lightPanel);
 
-                const light = new THREE.PointLight(0xffffee, 5, 20);
+                const light = new THREE.PointLight(0xffffee, 7, 20);
                 light.position.set(x, 4.5, z);
                 scene.add(light);
                 lights.push(light);
@@ -1020,13 +1001,89 @@
             lightPanel.rotation.x = Math.PI / 2;
             scene.add(lightPanel);
 
-            const light = new THREE.PointLight(0xffffee, 5, 20);
+            const light = new THREE.PointLight(0xffffee, 7, 20);
             light.position.set(x, 4.5, z);
             scene.add(light);
             lights.push(light);
         }
 
-        // Player and camera shake setup
+        // Astronaut Companion Setup
+        let companion, mixer, walkAction;
+        const loader = new FBXLoader();
+        loader.load(
+            'Walking.fbx',
+            (fbx) => {
+                companion = fbx;
+                // Set initial position at ground level with offset
+                companion.position.set(startingRoomWidth / 2 - 1, companionYOffset, startingRoomDepth / 2 - 1);
+                companion.scale.set(0.015, 0.015, 0.015); // Adjust if needed
+                scene.add(companion);
+                
+                // Update companionPosition to match
+                companionPosition.set(startingRoomWidth / 2 - 1, 0, startingRoomDepth / 2 - 1);
+                // Initialize last position to current position
+                companionLastPosition.copy(companionPosition);
+
+                // Debug materials and animations
+                companion.traverse((child) => {
+                    if (child.isMesh) {
+                        console.log('Mesh found:', child.name);
+                        console.log('Material:', child.material);
+                        if (child.material && child.material.map) { // Check if material and map exist
+                            console.log('Texture found:', child.material.map.image ? child.material.map.image.src : 'No image source');
+                        } else {
+                            console.log('No texture map assigned to material');
+                        }
+                        if (child.material) {
+                            child.material.needsUpdate = true;
+                        }
+                    }
+                });
+
+                // Animation setup
+                mixer = new THREE.AnimationMixer(companion);
+                console.log('Available animations:', fbx.animations);
+                if (fbx.animations && fbx.animations.length > 0) {
+                    console.log('Animation details:', {
+                        name: fbx.animations[0].name,
+                        duration: fbx.animations[0].duration,
+                        tracks: fbx.animations[0].tracks.length
+                    });
+                    walkAction = mixer.clipAction(fbx.animations[0]);
+                    walkAction.setLoop(THREE.LoopRepeat);
+                    walkAction.play();
+                    console.log('Animation started');
+                } else {
+                    console.warn('No animations found in FBX model');
+                }
+
+                // Compute bounding box
+                companion.traverse((child) => {
+                    if (child.isMesh) {
+                        child.geometry.computeBoundingBox();
+                    }
+                });
+            },
+            (xhr) => {
+                console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+            },
+            (error) => {
+                console.error('Error loading FBX model:', error);
+            }
+        );
+
+        let companionPosition = new THREE.Vector3(startingRoomWidth / 2 - 1, 0, startingRoomDepth / 2 - 1);
+        const companionSpeed = 4;
+        const minDistance = 1.5;
+        const maxDistance = 3;
+        let companionMoving = false;
+        const companionYOffset = -0.01; // Small offset to ensure model appears grounded
+        let companionStuckTime = 0;
+        let companionLastPosition = new THREE.Vector3();
+        let companionAlternateDirection = new THREE.Vector3();
+        const stuckThreshold = 0.05; // Distance threshold to determine if stuck
+        const stuckTimeThreshold = 0.5; // Time threshold to determine if stuck
+
         let playerPosition = new THREE.Vector3(startingRoomWidth / 2, 1.6, startingRoomDepth / 2);
         const offset = new THREE.Vector3(0, 0, 0);
         let currentIntensity = 0.005;
@@ -1036,6 +1093,7 @@
         const crouchingIntensity = 0.15;
         const transitionSpeed = 5;
         const playerRadius = 0.3;
+        const companionRadius = 0.3;
         
         let walkCycle = 0;
         const walkFrequency = 7.0;
@@ -1077,12 +1135,7 @@
                     setTimeout(() => {
                         loadingScreen.style.display = 'none';
                         controls.lock();
-                        
-                        // Initialize audio when game starts
                         initAudio();
-                        
-                        // Don't show audio controls at start since UI is hidden
-                        // document.getElementById('audio-controls').style.display = uiVisible ? 'block' : 'none';
                     }, 1000);
                     
                     clock.start();
@@ -1093,7 +1146,50 @@
                 loadingProgressElement.textContent = `${Math.floor(loadingProgressValue)}%`;
             }
         }, 200);
+
+        function checkCollision(position, radius) {
+            const sphere = new THREE.Sphere(position, radius);
+            for (const wall of walls) {
+                if (wall.worldBoundingBox && wall.worldBoundingBox.intersectsSphere(sphere)) {
+                    return true;
+                }
+            }
+            return false;
+        }
         
+        // Find a valid direction for the companion to move when stuck
+        function findValidDirection(position, radius, preferredDirection, numAttempts = 8) {
+            // First try the preferred direction
+            if (!checkCollision(position.clone().add(preferredDirection.clone().multiplyScalar(radius * 2)), radius)) {
+                return preferredDirection.clone();
+            }
+            
+            // Try various angles around the circle
+            const angleStep = (Math.PI * 2) / numAttempts;
+            for (let i = 0; i < numAttempts; i++) {
+                const angle = i * angleStep;
+                const direction = new THREE.Vector3(
+                    Math.cos(angle),
+                    0,
+                    Math.sin(angle)
+                ).normalize();
+                
+                const testPosition = position.clone().add(direction.clone().multiplyScalar(radius * 2));
+                if (!checkCollision(testPosition, radius)) {
+                    return direction;
+                }
+            }
+            
+            // If all else fails, return a random direction
+            const randomDir = new THREE.Vector3(
+                Math.random() - 0.5,
+                0,
+                Math.random() - 0.5
+            ).normalize();
+            
+            return randomDir;
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             
@@ -1124,24 +1220,19 @@
 
             const isMoving = moveForward || moveBackward || moveLeft || moveRight;
             
-            // Handle footstep sounds
             if (isMoving && audioInitialized) {
-                // Calculate step interval based on movement type
-                let stepInterval = 0.65; // Default walking interval (accounting for 200ms sound length)
-                
+                let stepInterval = 0.65;
                 if (isRunning && !isCrouching) {
-                    stepInterval = 0.45; // Faster steps when running
+                    stepInterval = 0.45;
                 } else if (isCrouching) {
-                    stepInterval = 0.9; // Slower steps when crouching
+                    stepInterval = 0.9;
                 }
                 
-                // Play footstep sound at appropriate intervals
                 if (currentTime - lastStepTime >= stepInterval) {
                     playFootstep();
                     lastStepTime = currentTime;
                 }
             } else {
-                // Reset step timer when not moving to ensure immediate step when movement resumes
                 lastStepTime = currentTime - 1.0;
             }
             
@@ -1166,7 +1257,6 @@
             
             const cycleSpeed = walkFrequency * (isRunning && !isCrouching ? 1.5 : 1.0) * (isCrouching ? 0.7 : 1.0);
             walkCycle += cycleSpeed * delta;
-            
             if (walkCycle > Math.PI * 2) {
                 walkCycle -= Math.PI * 2;
             }
@@ -1212,12 +1302,10 @@
             }
             cameraContainer.position.y = playerPosition.y;
 
-            // Improved collision detection
             const playerSphere = new THREE.Sphere(playerPosition, playerRadius);
             let collision = false;
             
             for (const wall of walls) {
-                // Use a more accurate collision check
                 if (wall.worldBoundingBox && wall.worldBoundingBox.intersectsSphere(playerSphere)) {
                     collision = true;
                     break;
@@ -1229,16 +1317,252 @@
                 cameraContainer.position.copy(playerPosition);
             }
 
+            // Astronaut Companion Movement
+            if (companion && mixer) {
+                mixer.update(delta);
+
+                // Check if companion is stuck by comparing current position to last position
+                const distanceMoved = companionPosition.distanceTo(companionLastPosition);
+                
+                if (companionMoving && distanceMoved < stuckThreshold) {
+                    companionStuckTime += delta;
+                } else {
+                    companionStuckTime = 0;
+                    // Generate a new alternate direction if we've moved
+                    if (distanceMoved > stuckThreshold) {
+                        // Store random perpendicular direction for use when stuck
+                        companionAlternateDirection.set(
+                            Math.random() - 0.5,
+                            0,
+                            Math.random() - 0.5
+                        ).normalize();
+                    }
+                }
+                
+                // Save current position for next frame's comparison
+                companionLastPosition.copy(companionPosition);
+
+                const directionToPlayer = new THREE.Vector3()
+                    .subVectors(playerPosition, companionPosition);
+                // Ignore Y component for movement
+                directionToPlayer.y = 0;
+                directionToPlayer.normalize();
+                
+                const distanceToPlayer = companionPosition.distanceTo(playerPosition);
+                const wasMoving = companionMoving;
+                companionMoving = false;
+
+                // Direction to move - either toward player or alternate route if stuck
+                let moveDirection = directionToPlayer.clone();
+                
+                // Look ahead to see if there's a wall in our path
+                const lookAheadDistance = companionRadius * 3;
+                const lookAheadPosition = companionPosition.clone().add(
+                    directionToPlayer.clone().multiplyScalar(lookAheadDistance)
+                );
+                
+                // If there's a wall ahead, try to find a better path before we get stuck
+                if (checkCollision(lookAheadPosition, companionRadius)) {
+                    // Get a valid direction that avoids the wall
+                    const betterDirection = findValidDirection(
+                        companionPosition,
+                        companionRadius,
+                        directionToPlayer
+                    );
+                    
+                    // Gradually blend between direct path and avoidance path
+                    // The closer we are to the wall, the more we follow the avoidance path
+                    const wallProximity = Math.min(1.0, companionStuckTime / stuckTimeThreshold);
+                    moveDirection.lerp(betterDirection, 0.5 + wallProximity * 0.5).normalize();
+                }
+                
+                // If stuck for too long, try to find a way around
+                if (companionStuckTime > stuckTimeThreshold) {
+                    // Use the findValidDirection function to get a better path
+                    const validDirection = findValidDirection(
+                        companionPosition, 
+                        companionRadius, 
+                        directionToPlayer
+                    );
+                    
+                    // Mix the valid direction with the direction to player
+                    moveDirection.copy(validDirection);
+                    
+                    // If still stuck for a long time, try more random directions
+                    if (companionStuckTime > stuckTimeThreshold * 3) {
+                        // Increase randomness the longer we're stuck
+                        const randomFactor = Math.min(0.8, (companionStuckTime - stuckTimeThreshold) / 5);
+                        moveDirection.lerp(companionAlternateDirection, randomFactor).normalize();
+                        
+                        // Reset stuck time after a while to try a fresh approach
+                        if (companionStuckTime > stuckTimeThreshold * 5) {
+                            companionStuckTime = stuckTimeThreshold;
+                            // Generate a completely new direction
+                            companionAlternateDirection.set(
+                                Math.random() - 0.5,
+                                0,
+                                Math.random() - 0.5
+                            ).normalize();
+                        }
+                    }
+                }
+
+                if (distanceToPlayer > maxDistance) {
+                    const moveVector = moveDirection.clone()
+                        .multiplyScalar(companionSpeed * delta);
+                    // Ensure we only move in X and Z directions
+                    moveVector.y = 0;
+                    const newPosition = companionPosition.clone().add(moveVector);
+                    
+                    // Keep Y position fixed at ground level
+                    newPosition.y = 0;
+                    
+                    if (!checkCollision(newPosition, companionRadius)) {
+                        companionPosition.copy(newPosition);
+                        companionMoving = true;
+                    } else {
+                        // If we hit a wall, immediately try a different direction next frame
+                        companionStuckTime = stuckTimeThreshold;
+                        
+                        // Try to slide along the wall by removing movement component in collision direction
+                        const wallNormal = newPosition.clone().sub(companionPosition).normalize();
+                        
+                        // Try sliding in both possible directions along the wall
+                        const slideRight = new THREE.Vector3(wallNormal.z, 0, -wallNormal.x).normalize();
+                        const slideLeft = new THREE.Vector3(-wallNormal.z, 0, wallNormal.x).normalize();
+                        
+                        // Try right direction first
+                        let slideVector = slideRight.clone().multiplyScalar(companionSpeed * delta);
+                        let slidePosition = companionPosition.clone().add(slideVector);
+                        slidePosition.y = 0;
+                        
+                        // If right doesn't work, try left
+                        if (checkCollision(slidePosition, companionRadius)) {
+                            slideVector = slideLeft.clone().multiplyScalar(companionSpeed * delta);
+                            slidePosition = companionPosition.clone().add(slideVector);
+                            slidePosition.y = 0;
+                        }
+                        
+                        if (!checkCollision(slidePosition, companionRadius)) {
+                            companionPosition.copy(slidePosition);
+                            companionMoving = true;
+                            
+                            // Update alternate direction to follow the successful slide direction
+                            if (slidePosition.distanceTo(companionPosition.clone().add(slideRight)) < 
+                                slidePosition.distanceTo(companionPosition.clone().add(slideLeft))) {
+                                companionAlternateDirection.copy(slideRight);
+                            } else {
+                                companionAlternateDirection.copy(slideLeft);
+                            }
+                        }
+                    }
+                } else if (distanceToPlayer < minDistance) {
+                    const moveVector = moveDirection.clone()
+                        .multiplyScalar(-companionSpeed * delta * 0.5);
+                    // Ensure we only move in X and Z directions
+                    moveVector.y = 0;
+                    const newPosition = companionPosition.clone().add(moveVector);
+                    
+                    // Keep Y position fixed at ground level
+                    newPosition.y = 0;
+                    
+                    if (!checkCollision(newPosition, companionRadius)) {
+                        companionPosition.copy(newPosition);
+                        companionMoving = true;
+                    } else {
+                        // If we hit a wall, immediately try a different direction next frame
+                        companionStuckTime = stuckTimeThreshold;
+                        
+                        // Try to slide along the wall by removing movement component in collision direction
+                        const wallNormal = newPosition.clone().sub(companionPosition).normalize();
+                        
+                        // Try sliding in both possible directions along the wall
+                        const slideRight = new THREE.Vector3(wallNormal.z, 0, -wallNormal.x).normalize();
+                        const slideLeft = new THREE.Vector3(-wallNormal.z, 0, wallNormal.x).normalize();
+                        
+                        // Try right direction first
+                        let slideVector = slideRight.clone().multiplyScalar(companionSpeed * delta);
+                        let slidePosition = companionPosition.clone().add(slideVector);
+                        slidePosition.y = 0;
+                        
+                        // If right doesn't work, try left
+                        if (checkCollision(slidePosition, companionRadius)) {
+                            slideVector = slideLeft.clone().multiplyScalar(companionSpeed * delta);
+                            slidePosition = companionPosition.clone().add(slideVector);
+                            slidePosition.y = 0;
+                        }
+                        
+                        if (!checkCollision(slidePosition, companionRadius)) {
+                            companionPosition.copy(slidePosition);
+                            companionMoving = true;
+                            
+                            // Update alternate direction to follow the successful slide direction
+                            if (slidePosition.distanceTo(companionPosition.clone().add(slideRight)) < 
+                                slidePosition.distanceTo(companionPosition.clone().add(slideLeft))) {
+                                companionAlternateDirection.copy(slideRight);
+                            } else {
+                                companionAlternateDirection.copy(slideLeft);
+                            }
+                        }
+                    }
+                }
+
+                if (companionMoving) {
+                    companion.position.set(
+                        companionPosition.x,
+                        companionYOffset, // Apply small Y offset
+                        companionPosition.z
+                    );
+                    companion.lookAt(
+                        playerPosition.x,
+                        companion.position.y,
+                        playerPosition.z
+                    );
+                    if (walkAction) {
+                        walkAction.timeScale = 1.0;
+                    }
+                    
+                    // Play companion footstep sounds when moving
+                    if (audioInitialized) {
+                        // Calculate step interval based on movement speed and distance to player
+                        let companionStepInterval = 0.5; // Default step interval
+                        
+                        // Adjust step interval based on distance to player
+                        // When further from player, steps are faster as companion tries to catch up
+                        if (distanceToPlayer > maxDistance * 0.8) {
+                            companionStepInterval = 0.4; // Faster steps when far away
+                        } else if (distanceToPlayer < minDistance * 1.2) {
+                            companionStepInterval = 0.6; // Slower steps when close
+                        }
+                        
+                        // Add slight randomness to step timing
+                        companionStepInterval *= 0.9 + Math.random() * 0.2;
+                        
+                        if (currentTime - lastCompanionStepTime >= companionStepInterval) {
+                            playCompanionFootstep();
+                            lastCompanionStepTime = currentTime;
+                        }
+                    }
+                } else {
+                    companion.position.set(
+                        companionPosition.x,
+                        companionYOffset, // Apply small Y offset
+                        companionPosition.z
+                    );
+                    if (walkAction) {
+                        walkAction.timeScale = 0.0;
+                    }
+                }
+            }
+
             camera.position.copy(offset);
             camera.rotation.z = camera.rotation.z * 0.85 + targetRoll * 0.15;
 
-            // Update audio based on player position
             updateAudio();
 
             composer.render();
         }
 
-        // Function to calculate distance to nearest light
         function getDistanceToNearestLight(position) {
             let minDistance = Infinity;
             for (const light of lights) {
@@ -1250,35 +1574,45 @@
             return minDistance;
         }
         
-        // Function to update audio based on player position
         function updateAudio() {
             if (!fluorescentBuzz.paused) {
                 const distanceToLight = getDistanceToNearestLight(playerPosition);
                 const maxDistance = 15;
                 const minDistance = 2;
                 
-                // Calculate volume based on distance
                 let distanceVolume = 1.0;
                 if (distanceToLight > minDistance) {
                     distanceVolume = Math.max(0, 1 - ((distanceToLight - minDistance) / (maxDistance - minDistance)));
                 }
                 
-                // Apply master volume and distance-based volume
                 fluorescentBuzz.volume = masterVolume * distanceVolume;
                 
-                // Add slight random fluctuation to simulate unstable lights
                 if (Math.random() < 0.05) {
-                    const fluctuation = 0.95 + Math.random() * 0.1; // 0.95 to 1.05
+                    const fluctuation = 0.95 + Math.random() * 0.1;
                     fluorescentBuzz.volume *= fluctuation;
                 }
             } else if (gameStarted && !fluorescentBuzz.muted) {
-                // Try to restart audio if it stopped unexpectedly
                 fluorescentBuzz.play().catch(e => console.log("Couldn't restart audio in update:", e));
             }
             
-            // Update footstep volume based on master volume
+            // Update player footstep volumes
             stepSounds.forEach(sound => {
                 sound.volume = masterVolume * footstepVolume;
+            });
+            
+            // Update companion footstep volumes
+            companionStepSounds.forEach(sound => {
+                // Adjust volume based on distance to player
+                const distanceToPlayer = playerPosition.distanceTo(companionPosition);
+                const maxDistance = 15;
+                const minDistance = 1;
+                
+                let distanceFactor = 1.0;
+                if (distanceToPlayer > minDistance) {
+                    distanceFactor = Math.max(0.2, 1 - ((distanceToPlayer - minDistance) / (maxDistance - minDistance)));
+                }
+                
+                sound.volume = masterVolume * footstepVolume * 0.4 * distanceFactor;
             });
         }
     </script>
