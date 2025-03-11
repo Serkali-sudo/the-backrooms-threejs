@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procedural Backrooms Game with Enhanced Camera Shake</title>
+    <title>Multiplayer Backrooms Game</title>
     <style>
         body { margin: 0; overflow: hidden; }
         canvas { display: block; }
@@ -112,6 +112,130 @@
             margin-left: 10px;
             vertical-align: middle;
         }
+        
+        /* Multiplayer UI */
+        #multiplayer-ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #e9e566;
+            font-family: monospace;
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 1px 1px 2px #000;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        #peer-id {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        #connect-form {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        #connect-form input {
+            padding: 5px;
+            background-color: #333;
+            border: 1px solid #e9e566;
+            color: #e9e566;
+            font-family: monospace;
+        }
+        
+        #connect-form button {
+            padding: 5px 10px;
+            background-color: #e9e566;
+            color: #000;
+            border: none;
+            font-family: monospace;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+        
+        #connect-form button:hover {
+            background-color: #fff;
+        }
+        
+        #connection-status {
+            margin-top: 10px;
+            font-style: italic;
+        }
+        
+        /* Chat UI */
+        #chat-container {
+            position: fixed;
+            bottom: 100px;
+            left: 20px;
+            width: 300px;
+            color: #e9e566;
+            font-family: monospace;
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 1px 1px 2px #000;
+            display: none;
+        }
+        
+        #chat-messages {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px 5px 0 0;
+            max-height: 150px;
+            overflow-y: auto;
+            margin-bottom: 5px;
+        }
+        
+        #chat-form {
+            display: flex;
+            gap: 5px;
+        }
+        
+        #chat-input {
+            flex-grow: 1;
+            padding: 5px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 1px solid #e9e566;
+            color: #e9e566;
+            font-family: monospace;
+            border-radius: 0 0 0 5px;
+        }
+        
+        #chat-send {
+            padding: 5px 10px;
+            background-color: #e9e566;
+            color: #000;
+            border: none;
+            font-family: monospace;
+            cursor: pointer;
+            border-radius: 0 0 5px 0;
+        }
+        
+        #chat-send:hover {
+            background-color: #fff;
+        }
+        
+        .chat-message {
+            margin-bottom: 5px;
+            word-wrap: break-word;
+        }
+        
+        .chat-message.self {
+            color: #a8e566;
+        }
+        
+        .chat-message.other {
+            color: #e5c066;
+        }
+        
+        .chat-message.system {
+            color: #e566a8;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -125,7 +249,7 @@
     </div>
     
     <div id="game-ui" style="display: none;">
-        <div>WASD: Move | SHIFT: Run | CTRL: Crouch | CLICK: Look</div>
+        <div>WASD: Move | SHIFT: Run | CTRL: Crouch | F: Backflip | CLICK: Look | T: Chat | V: Toggle Direction Helper</div>
     </div>
     
     <div id="fps-counter" style="display: none;">FPS: 0</div>
@@ -136,9 +260,31 @@
         <span id="volume-value">70%</span>
     </div>
     
+    <!-- Multiplayer UI -->
+    <div id="multiplayer-ui">
+        <div id="peer-id">Your ID: <span id="my-peer-id">Connecting...</span></div>
+        <div id="connect-form">
+            <input type="text" id="remote-peer-id" placeholder="Enter peer ID to connect">
+            <button id="connect-button">Connect</button>
+        </div>
+        <div id="connection-status">Not connected</div>
+    </div>
+    
+    <!-- Chat UI -->
+    <div id="chat-container" style="display: none;">
+        <div id="chat-messages"></div>
+        <form id="chat-form">
+            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+            <button type="submit" id="chat-send">Send</button>
+        </form>
+    </div>
+    
     <audio id="fluorescent-buzz" loop preload="auto">
         <source src="fluorescent.mp3" type="audio/mpeg">
     </audio>
+    
+    <!-- PeerJS Library -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     
     <script type="importmap">
     {
@@ -155,16 +301,53 @@
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'; // Add this line
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
         const loadingScreen = document.getElementById('loading-screen');
         const loadingBar = document.getElementById('loading-bar');
         const loadingProgressElement = document.getElementById('loading-progress');
         const startButton = document.getElementById('start-button');
         const fpsCounter = document.getElementById('fps-counter');
+        const multiplayerUI = document.getElementById('multiplayer-ui');
+        const myPeerIdElement = document.getElementById('my-peer-id');
+        const remotePeerIdInput = document.getElementById('remote-peer-id');
+        const connectButton = document.getElementById('connect-button');
+        const connectionStatus = document.getElementById('connection-status');
+        const chatContainer = document.getElementById('chat-container');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
         
         let gameStarted = false;
         let audioInitialized = false;
+        let isChatting = false;
+        
+        // Multiplayer variables
+        let peer;
+        let connection;
+        let isHost = false;
+        let isConnected = false;
+        let remotePlayerModel;
+        let remotePlayerPosition = new THREE.Vector3();
+        let remotePlayerRotation = new THREE.Euler();
+        let remotePlayerQuaternion = new THREE.Quaternion(); // Add quaternion for better rotation handling
+        let remotePlayerMoving = false;
+        let remotePlayerMovingBackward = false; // Add this new variable
+        let remotePlayerLastPosition = new THREE.Vector3();
+        let remotePlayerMixer;
+        let remotePlayerWalkAction;
+        let remotePlayerIdleAction;
+        let remotePlayerBackflipAction; // Add new variable for backflip animation
+        let isLocalPlayerBackflipping = false; // Flag to track if local player is backflipping
+        let isRemotePlayerBackflipping = false; // Flag to track if remote player is backflipping
+        let backflipStartTime = 0; // Track when backflip started
+        let backflipDuration = 1.0; // Duration of backflip animation in seconds
+        let lastDataSentTime = 0;
+        const DATA_SEND_INTERVAL = 0.05; // Send data 20 times per second
+        let directionHelper; // Debug helper to show remote player direction
+        let showDirectionHelper = true; // Toggle for direction helper
+        const animationCrossfadeTime = 0.3; // Time in seconds for animation crossfade
         
         const VHSShader = {
             uniforms: {
@@ -312,14 +495,14 @@
             stepSounds.push(stepSound);
         }
         
-        // Create companion footstep sounds
-        const companionStepSounds = [];
+        // Remote player footstep sounds
+        const remotePlayerStepSounds = [];
         for (let i = 1; i <= STEP_COUNT; i++) {
-            const companionStepSound = new Audio(`steps/step${i}.mp3`);
-            companionStepSound.preload = 'auto';
-            // Make companion steps slightly quieter than player steps
-            companionStepSound.volume = 0.4;
-            companionStepSounds.push(companionStepSound);
+            const remoteStepSound = new Audio(`steps/step${i}.mp3`);
+            remoteStepSound.preload = 'auto';
+            // Make remote player steps slightly quieter than player steps
+            remoteStepSound.volume = 0.4;
+            remotePlayerStepSounds.push(remoteStepSound);
         }
         
         const volumeSlider = document.getElementById('volume-slider');
@@ -328,15 +511,15 @@
         let footstepVolume = 0.5;
         let lastStepTime = 0;
         let lastStepIndex = -1;
-        let lastCompanionStepTime = 0;
-        let lastCompanionStepIndex = -1;
+        let lastRemoteStepTime = 0;
+        let lastRemoteStepIndex = -1;
         
         fluorescentBuzz.volume = masterVolume;
         stepSounds.forEach(sound => {
             sound.volume = masterVolume * footstepVolume;
         });
-        companionStepSounds.forEach(sound => {
-            sound.volume = masterVolume * footstepVolume * 0.4; // Companion steps are quieter
+        remotePlayerStepSounds.forEach(sound => {
+            sound.volume = masterVolume * footstepVolume * 0.4; // Remote player steps are quieter
         });
         
         let audioContext;
@@ -366,7 +549,7 @@
             
             let stepIndex;
             do {
-                stepIndex = Math.floor(Math.random() * stepSounds.length);
+                stepIndex = Math.floor(footstepRandom.random() * stepSounds.length);
             } while (stepIndex === lastStepIndex && stepSounds.length > 1);
             
             lastStepIndex = stepIndex;
@@ -380,29 +563,29 @@
             });
         }
         
-        function playCompanionFootstep() {
+        function playRemotePlayerFootstep() {
             if (!audioInitialized) return;
             
-            const isAnyCompanionStepPlaying = companionStepSounds.some(sound => !sound.paused && sound.currentTime < sound.duration - 0.05);
-            if (isAnyCompanionStepPlaying) return;
+            const isAnyRemoteStepPlaying = remotePlayerStepSounds.some(sound => !sound.paused && sound.currentTime < sound.duration - 0.05);
+            if (isAnyRemoteStepPlaying) return;
             
             let stepIndex;
             do {
-                stepIndex = Math.floor(Math.random() * companionStepSounds.length);
-            } while (stepIndex === lastCompanionStepIndex && companionStepSounds.length > 1);
+                stepIndex = Math.floor(remoteFootstepRandom.random() * remotePlayerStepSounds.length);
+            } while (stepIndex === lastRemoteStepIndex && remotePlayerStepSounds.length > 1);
             
-            lastCompanionStepIndex = stepIndex;
+            lastRemoteStepIndex = stepIndex;
             
-            const stepSound = companionStepSounds[stepIndex];
+            const stepSound = remotePlayerStepSounds[stepIndex];
             stepSound.currentTime = 0;
             stepSound.volume = masterVolume * footstepVolume * 0.4; // Quieter than player footsteps
             
             // Add slight pitch variation to differentiate from player footsteps
-            const pitchVariation = 0.9 + Math.random() * 0.2; // Between 0.9 and 1.1
+            const pitchVariation = 0.9 + remoteFootstepRandom.random() * 0.2; // Between 0.9 and 1.1
             stepSound.playbackRate = pitchVariation;
             
             stepSound.play().catch(e => {
-                console.log("Couldn't play companion step sound:", e);
+                console.log("Couldn't play remote player step sound:", e);
             });
         }
         
@@ -417,13 +600,16 @@
             stepSounds.forEach(sound => {
                 sound.volume = masterVolume * footstepVolume;
             });
-            companionStepSounds.forEach(sound => {
+            remotePlayerStepSounds.forEach(sound => {
                 sound.volume = masterVolume * footstepVolume * 0.4;
             });
         });
         
         document.addEventListener('keydown', (event) => {
             if (!gameStarted) return;
+            
+            // If in chat mode, don't process movement keys
+            if (isChatting) return;
             
             switch (event.code) {
                 case 'KeyW': moveForward = true; break;
@@ -442,6 +628,36 @@
                         playerPosition.y -= 0.5;
                     }
                     break;
+                case 'KeyF':
+                    // Trigger backflip animation if not already backflipping
+                    if (!isLocalPlayerBackflipping && remotePlayerBackflipAction) {
+                        isLocalPlayerBackflipping = true;
+                        backflipStartTime = clock.getElapsedTime();
+                        
+                        // Play backflip animation on local player's model
+                        if (remotePlayerBackflipAction) {
+                            // Reset weights of other animations
+                            if (remotePlayerIdleAction) remotePlayerIdleAction.weight = 0;
+                            if (remotePlayerWalkAction) remotePlayerWalkAction.weight = 0;
+                            
+                            // Set backflip animation weight to 1
+                            remotePlayerBackflipAction.reset();
+                            remotePlayerBackflipAction.weight = 1;
+                            remotePlayerBackflipAction.play();
+                        }
+                        
+                        // Send backflip event to other player if connected
+                        if (isConnected && connection) {
+                            connection.send({
+                                type: 'backflip',
+                                startTime: backflipStartTime
+                            });
+                            
+                            // Add chat message
+                            addChatMessage('You did a backflip!', 'system');
+                        }
+                    }
+                    break;
                 case 'KeyH':
                     uiVisible = !uiVisible;
                     document.getElementById('game-ui').style.display = uiVisible ? 'block' : 'none';
@@ -454,6 +670,25 @@
                 case 'KeyR':
                     if (fluorescentBuzz.paused) {
                         fluorescentBuzz.play().catch(e => console.log("Couldn't restart audio:", e));
+                    }
+                    break;
+                case 'KeyT':
+                    // Enter chat mode
+                    if (isConnected) {
+                        isChatting = true;
+                        controls.unlock();
+                        chatContainer.style.display = 'block';
+                        chatInput.focus();
+                    } else {
+                        addChatMessage('Not connected to another player', 'system');
+                    }
+                    break;
+                case 'KeyV':
+                    // Toggle direction helper visibility
+                    if (directionHelper) {
+                        showDirectionHelper = !showDirectionHelper;
+                        directionHelper.visible = showDirectionHelper;
+                        addChatMessage(`Direction helper ${showDirectionHelper ? 'shown' : 'hidden'}`, 'system');
                     }
                     break;
             }
@@ -489,6 +724,25 @@
         const M = 10;
         const roomSize = 6;
 
+        // Create a seeded random number generator for consistent maze generation
+        class SeededRandom {
+            constructor(seed = 12345) {
+                this.seed = seed;
+            }
+            
+            // Simple random function that uses the seed
+            random() {
+                const x = Math.sin(this.seed++) * 10000;
+                return x - Math.floor(x);
+            }
+        }
+        
+        // Create fixed-seed random generators for different purposes
+        const mazeRandom = new SeededRandom(12345);
+        const audioRandom = new SeededRandom(24680);
+        const footstepRandom = new SeededRandom(13579);
+        const remoteFootstepRandom = new SeededRandom(97531);
+
         const horizontalWalls = Array.from({ length: N - 1 }, () => Array(M).fill(true));
         const verticalWalls = Array.from({ length: N }, () => Array(M - 1).fill(true));
 
@@ -508,7 +762,11 @@
             }
         }
 
-        wallList.sort(() => Math.random() - 0.5);
+        // Use the seeded random for shuffling the wall list
+        for (let i = wallList.length - 1; i > 0; i--) {
+            const j = Math.floor(mazeRandom.random() * (i + 1));
+            [wallList[i], wallList[j]] = [wallList[j], wallList[i]];
+        }
 
         const uf = new UnionFind(N * M);
         let components = N * M;
@@ -527,16 +785,17 @@
             index++;
         }
 
+        // Use seeded random for additional wall removal
         for (let k = 0; k < N - 1; k++) {
             for (let j = 0; j < M; j++) {
-                if (horizontalWalls[k][j] && Math.random() < 0.08) {
+                if (horizontalWalls[k][j] && mazeRandom.random() < 0.08) {
                     horizontalWalls[k][j] = false;
                 }
             }
         }
         for (let i = 0; i < N; i++) {
             for (let l = 0; l < M - 1; l++) {
-                if (verticalWalls[i][l] && Math.random() < 0.08) {
+                if (verticalWalls[i][l] && mazeRandom.random() < 0.08) {
                     verticalWalls[i][l] = false;
                 }
             }
@@ -626,10 +885,13 @@
             ctx.fillStyle = '#8080ff';
             ctx.fillRect(0, 0, size, size);
 
+            // Use seeded random for normal map generation
+            const textureRandom = new SeededRandom(54321);
+
             for (let i = 0; i < 200; i++) {
-                const x = Math.random() * size;
-                const y = Math.random() * size;
-                const radius = 2 + Math.random() * 5;
+                const x = textureRandom.random() * size;
+                const y = textureRandom.random() * size;
+                const radius = 2 + textureRandom.random() * 5;
 
                 const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
                 gradient.addColorStop(0, '#7878ff');
@@ -654,10 +916,13 @@
             ctx.fillStyle = '#a68f3e';
             ctx.fillRect(0, 0, size, size);
 
+            // Use seeded random for floor texture generation
+            const textureRandom = new SeededRandom(67890);
+
             const imageData = ctx.getImageData(0, 0, size, size);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
-                const noise = (Math.random() - 0.5) * 10;
+                const noise = (textureRandom.random() - 0.5) * 10;
                 data[i]   += noise;
                 data[i+1] += noise;
                 data[i+2] += noise;
@@ -677,10 +942,13 @@
             ctx.fillStyle = '#8080ff';
             ctx.fillRect(0, 0, size, size);
 
+            // Use seeded random for floor normal map generation
+            const textureRandom = new SeededRandom(98765);
+
             for (let i = 0; i < 200; i++) {
-                const x = Math.random() * size;
-                const y = Math.random() * size;
-                const radius = 2 + Math.random() * 8;
+                const x = textureRandom.random() * size;
+                const y = textureRandom.random() * size;
+                const radius = 2 + textureRandom.random() * 8;
 
                 const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
                 gradient.addColorStop(0, '#7878ff');
@@ -944,9 +1212,15 @@
         ceiling.position.set(floorSize / 2, 5, floorSize / 2);
         scene.add(ceiling);
 
+        // Add ambient light to the entire scene
+        const ambientLight = new THREE.AmbientLight(0xffffcc, 0.3); // Soft yellowish ambient light
+        scene.add(ambientLight);
+
         const lights = [];
+        // Create light panels for all rooms but only add actual lights to a subset
         for (let i = 0; i < N; i++) {
             for (let j = 0; j < M; j++) {
+                // Always create the light panel (visual element)
                 const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
                 const lightMaterial = new THREE.MeshBasicMaterial({
                     color: 0xffffff,
@@ -958,133 +1232,63 @@
                 lightPanel.rotation.x = Math.PI / 2;
                 scene.add(lightPanel);
 
-                const light = new THREE.PointLight(0xffffee, 7, 20);
-                light.position.set((j + 0.5) * roomSize, 4.5, mazeOffsetZ + (i + 0.5) * roomSize);
-                scene.add(light);
-                lights.push(light);
+                // Only add actual lights to a very sparse subset of rooms (every 4th room in both directions)
+                if (i % 4 === 0 && j % 4 === 0) {
+                    const light = new THREE.PointLight(0xffffee, 8, 40); // Adjusted intensity and increased range
+                    light.position.set((j + 0.5) * roomSize, 4.5, mazeOffsetZ + (i + 0.5) * roomSize);
+                    scene.add(light);
+                    lights.push(light);
+                }
             }
         }
 
+        // Reduce lights in starting room - only add 1-2 lights instead of many
+        const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
+        const lightMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            side: THREE.DoubleSide
+        });
+
+        // Add light panels to all positions for visual consistency
         for (let x = 2; x < startingRoomWidth; x += 4) {
             for (let z = 2; z < startingRoomDepth; z += 4) {
-                const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
-                const lightMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xffffff,
-                    side: THREE.DoubleSide
-                });
-
                 const lightPanel = new THREE.Mesh(lightGeometry, lightMaterial);
                 lightPanel.position.set(x, 4.99, z);
                 lightPanel.rotation.x = Math.PI / 2;
                 scene.add(lightPanel);
-
-                const light = new THREE.PointLight(0xffffee, 7, 20);
-                light.position.set(x, 4.5, z);
-                scene.add(light);
-                lights.push(light);
             }
         }
+        
+        // But only add one actual light in the center of the starting room
+        const startingRoomLight = new THREE.PointLight(0xffffee, 10, 35); // Adjusted intensity
+        startingRoomLight.position.set(startingRoomWidth / 2, 4.5, startingRoomDepth / 2);
+        scene.add(startingRoomLight);
+        lights.push(startingRoomLight);
 
         const hallwayStartZ = startingRoomDepth;
         const hallwayStartX = (startingRoomWidth - hallwayWidth) / 2;
+        
+        // Add light panels along the hallway for visual consistency
         for (let z = hallwayStartZ + 4; z < hallwayStartZ + hallwayLength; z += 6) {
             const x = hallwayStartX + hallwayWidth / 2;
             
-            const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
-            const lightMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffffff,
-                side: THREE.DoubleSide
-            });
-
-            const lightPanel = new THREE.Mesh(lightGeometry, lightMaterial);
-            lightPanel.position.set(x, 4.99, z);
-            lightPanel.rotation.x = Math.PI / 2;
-            scene.add(lightPanel);
-
-            const light = new THREE.PointLight(0xffffee, 7, 20);
-            light.position.set(x, 4.5, z);
-            scene.add(light);
-            lights.push(light);
+            const hallwayLightPanel = new THREE.Mesh(lightGeometry.clone(), lightMaterial.clone());
+            hallwayLightPanel.position.set(x, 4.99, z);
+            hallwayLightPanel.rotation.x = Math.PI / 2;
+            scene.add(hallwayLightPanel);
+        }
+        
+        // But only add a few actual lights in the hallway, spaced very far apart
+        for (let z = hallwayStartZ + 25; z < hallwayStartZ + hallwayLength; z += 50) {
+            const x = hallwayStartX + hallwayWidth / 2;
+            
+            const hallwayLight = new THREE.PointLight(0xffffee, 8, 45); // Adjusted intensity and increased range
+            hallwayLight.position.set(x, 4.5, z);
+            scene.add(hallwayLight);
+            lights.push(hallwayLight);
         }
 
-        // Astronaut Companion Setup
-        let companion, mixer, walkAction;
-        const loader = new FBXLoader();
-        loader.load(
-            'Walking.fbx',
-            (fbx) => {
-                companion = fbx;
-                // Set initial position at ground level with offset
-                companion.position.set(startingRoomWidth / 2 - 1, companionYOffset, startingRoomDepth / 2 - 1);
-                companion.scale.set(0.015, 0.015, 0.015); // Adjust if needed
-                scene.add(companion);
-                
-                // Update companionPosition to match
-                companionPosition.set(startingRoomWidth / 2 - 1, 0, startingRoomDepth / 2 - 1);
-                // Initialize last position to current position
-                companionLastPosition.copy(companionPosition);
-
-                // Debug materials and animations
-                companion.traverse((child) => {
-                    if (child.isMesh) {
-                        console.log('Mesh found:', child.name);
-                        console.log('Material:', child.material);
-                        if (child.material && child.material.map) { // Check if material and map exist
-                            console.log('Texture found:', child.material.map.image ? child.material.map.image.src : 'No image source');
-                        } else {
-                            console.log('No texture map assigned to material');
-                        }
-                        if (child.material) {
-                            child.material.needsUpdate = true;
-                        }
-                    }
-                });
-
-                // Animation setup
-                mixer = new THREE.AnimationMixer(companion);
-                console.log('Available animations:', fbx.animations);
-                if (fbx.animations && fbx.animations.length > 0) {
-                    console.log('Animation details:', {
-                        name: fbx.animations[0].name,
-                        duration: fbx.animations[0].duration,
-                        tracks: fbx.animations[0].tracks.length
-                    });
-                    walkAction = mixer.clipAction(fbx.animations[0]);
-                    walkAction.setLoop(THREE.LoopRepeat);
-                    walkAction.play();
-                    console.log('Animation started');
-                } else {
-                    console.warn('No animations found in FBX model');
-                }
-
-                // Compute bounding box
-                companion.traverse((child) => {
-                    if (child.isMesh) {
-                        child.geometry.computeBoundingBox();
-                    }
-                });
-            },
-            (xhr) => {
-                console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-            },
-            (error) => {
-                console.error('Error loading FBX model:', error);
-            }
-        );
-
-        let companionPosition = new THREE.Vector3(startingRoomWidth / 2 - 1, 0, startingRoomDepth / 2 - 1);
-        const companionSpeed = 4;
-        const minDistance = 1.5;
-        const maxDistance = 3;
-        let companionMoving = false;
-        const companionYOffset = -0.01; // Small offset to ensure model appears grounded
-        let companionStuckTime = 0;
-        let companionLastPosition = new THREE.Vector3();
-        let companionAlternateDirection = new THREE.Vector3();
-        const stuckThreshold = 0.05; // Distance threshold to determine if stuck
-        const stuckTimeThreshold = 0.5; // Time threshold to determine if stuck
-
-        let playerPosition = new THREE.Vector3(startingRoomWidth / 2, 1.6, startingRoomDepth / 2);
+        let playerPosition = new THREE.Vector3(startingRoomWidth / 2, 2.0, startingRoomDepth / 2);
         const offset = new THREE.Vector3(0, 0, 0);
         let currentIntensity = 0.005;
         const restingIntensity = 0.005;
@@ -1093,7 +1297,8 @@
         const crouchingIntensity = 0.15;
         const transitionSpeed = 5;
         const playerRadius = 0.3;
-        const companionRadius = 0.3;
+        const remotePlayerRadius = 0.3;
+        let remotePlayerYOffset = -0.01; // Small offset to ensure model appears grounded
         
         let walkCycle = 0;
         const walkFrequency = 7.0;
@@ -1121,7 +1326,8 @@
         
         let loadingProgressValue = 0;
         const loadingInterval = setInterval(() => {
-            loadingProgressValue += Math.random() * 10;
+            // Use fixed increments instead of random for consistent loading experience
+            loadingProgressValue += 5;
             if (loadingProgressValue >= 100) {
                 loadingProgressValue = 100;
                 clearInterval(loadingInterval);
@@ -1129,18 +1335,7 @@
                 loadingBar.style.width = '100%';
                 loadingProgressElement.textContent = '100%';
                 
-                setTimeout(() => {
-                    gameStarted = true;
-                    loadingScreen.style.opacity = '0';
-                    setTimeout(() => {
-                        loadingScreen.style.display = 'none';
-                        controls.lock();
-                        initAudio();
-                    }, 1000);
-                    
-                    clock.start();
-                    animate();
-                }, 500);
+                startButton.style.display = 'block';
             } else {
                 loadingBar.style.width = `${loadingProgressValue}%`;
                 loadingProgressElement.textContent = `${Math.floor(loadingProgressValue)}%`;
@@ -1190,6 +1385,93 @@
             return randomDir;
         }
 
+        function sendPlayerData() {
+            if (isConnected && connection) {
+                const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+                const isMovingBackward = moveBackward;
+                
+                // Create a quaternion from the camera container's rotation
+                const quaternion = new THREE.Quaternion();
+                cameraContainer.getWorldQuaternion(quaternion);
+                
+                connection.send({
+                    type: 'position',
+                    position: {
+                        x: playerPosition.x,
+                        y: playerPosition.y,
+                        z: playerPosition.z
+                    },
+                    quaternion: {
+                        x: quaternion.x,
+                        y: quaternion.y,
+                        z: quaternion.z,
+                        w: quaternion.w
+                    },
+                    isMoving: isMoving,
+                    isMovingBackward: isMovingBackward
+                });
+            }
+        }
+
+        function sendChatMessage(message) {
+            if (isConnected && connection) {
+                connection.send({
+                    type: 'chat',
+                    message: message
+                });
+                addChatMessage(message, 'self');
+            }
+        }
+
+        function addChatMessage(message, type) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('chat-message', type);
+            
+            if (type === 'self') {
+                messageElement.textContent = `You: ${message}`;
+            } else if (type === 'other') {
+                messageElement.textContent = `Other: ${message}`;
+            } else if (type === 'system') {
+                messageElement.textContent = message;
+            }
+            
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // Show chat container if it's hidden
+            chatContainer.style.display = 'block';
+            
+            // Auto-hide system messages after 5 seconds
+            if (type === 'system') {
+                setTimeout(() => {
+                    chatMessages.removeChild(messageElement);
+                    
+                    // Hide chat container if there are no messages
+                    if (chatMessages.children.length === 0) {
+                        chatContainer.style.display = 'none';
+                    }
+                }, 5000);
+            }
+        }
+
+        // Initialize chat
+        function initChat() {
+            chatForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                const message = chatInput.value.trim();
+                if (message) {
+                    sendChatMessage(message);
+                    chatInput.value = '';
+                }
+                
+                // Exit chat mode
+                isChatting = false;
+                chatInput.blur();
+                controls.lock();
+            });
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             
@@ -1206,6 +1488,12 @@
             
             const delta = clock.getDelta();
             const currentTime = clock.getElapsedTime();
+            
+            // Send player data at regular intervals
+            if (currentTime - lastDataSentTime >= DATA_SEND_INTERVAL) {
+                sendPlayerData();
+                lastDataSentTime = currentTime;
+            }
             
             let speed = walkSpeed;
             if (isRunning && !isCrouching) {
@@ -1296,9 +1584,9 @@
             playerPosition.copy(cameraContainer.position);
             
             if (isCrouching) {
-                playerPosition.y = 1.1;
+                playerPosition.y = 1.5;
             } else {
-                playerPosition.y = 1.6;
+                playerPosition.y = 2.0;
             }
             cameraContainer.position.y = playerPosition.y;
 
@@ -1317,246 +1605,159 @@
                 cameraContainer.position.copy(playerPosition);
             }
 
-            // Astronaut Companion Movement
-            if (companion && mixer) {
-                mixer.update(delta);
-
-                // Check if companion is stuck by comparing current position to last position
-                const distanceMoved = companionPosition.distanceTo(companionLastPosition);
+            // Update remote player (replaces companion code)
+            if (remotePlayerModel && remotePlayerMixer) {
+                remotePlayerMixer.update(delta);
                 
-                if (companionMoving && distanceMoved < stuckThreshold) {
-                    companionStuckTime += delta;
-                } else {
-                    companionStuckTime = 0;
-                    // Generate a new alternate direction if we've moved
-                    if (distanceMoved > stuckThreshold) {
-                        // Store random perpendicular direction for use when stuck
-                        companionAlternateDirection.set(
-                            Math.random() - 0.5,
-                            0,
-                            Math.random() - 0.5
-                        ).normalize();
-                    }
-                }
+                // Calculate distance moved since last frame
+                const distanceMoved = remotePlayerPosition.distanceTo(remotePlayerLastPosition);
+                remotePlayerLastPosition.copy(remotePlayerPosition);
                 
-                // Save current position for next frame's comparison
-                companionLastPosition.copy(companionPosition);
-
-                const directionToPlayer = new THREE.Vector3()
-                    .subVectors(playerPosition, companionPosition);
-                // Ignore Y component for movement
-                directionToPlayer.y = 0;
-                directionToPlayer.normalize();
-                
-                const distanceToPlayer = companionPosition.distanceTo(playerPosition);
-                const wasMoving = companionMoving;
-                companionMoving = false;
-
-                // Direction to move - either toward player or alternate route if stuck
-                let moveDirection = directionToPlayer.clone();
-                
-                // Look ahead to see if there's a wall in our path
-                const lookAheadDistance = companionRadius * 3;
-                const lookAheadPosition = companionPosition.clone().add(
-                    directionToPlayer.clone().multiplyScalar(lookAheadDistance)
+                // Update position - add Y offset to the model's position
+                remotePlayerModel.position.set(
+                    remotePlayerPosition.x,
+                    remotePlayerYOffset, // Use Y offset for grounding
+                    remotePlayerPosition.z
                 );
                 
-                // If there's a wall ahead, try to find a better path before we get stuck
-                if (checkCollision(lookAheadPosition, companionRadius)) {
-                    // Get a valid direction that avoids the wall
-                    const betterDirection = findValidDirection(
-                        companionPosition,
-                        companionRadius,
-                        directionToPlayer
-                    );
-                    
-                    // Gradually blend between direct path and avoidance path
-                    // The closer we are to the wall, the more we follow the avoidance path
-                    const wallProximity = Math.min(1.0, companionStuckTime / stuckTimeThreshold);
-                    moveDirection.lerp(betterDirection, 0.5 + wallProximity * 0.5).normalize();
+                // Apply quaternion rotation directly
+                // Extract only the Y-axis rotation (yaw) from the quaternion
+                // This prevents the model from tilting up/down when the player looks up/down
+                const euler = new THREE.Euler().setFromQuaternion(remotePlayerQuaternion, 'YXZ');
+                const yawOnlyQuaternion = new THREE.Quaternion().setFromEuler(
+                    new THREE.Euler(0, euler.y, 0, 'YXZ')
+                );
+                remotePlayerModel.quaternion.copy(yawOnlyQuaternion);
+                
+                // Log position and rotation occasionally for debugging
+                if (Math.random() < 0.01) { // Log approximately once every 100 frames
+                    console.log("Remote player update:", {
+                        position: remotePlayerModel.position.clone(),
+                        quaternion: remotePlayerQuaternion.clone(),
+                        moving: remotePlayerMoving
+                    });
                 }
                 
-                // If stuck for too long, try to find a way around
-                if (companionStuckTime > stuckTimeThreshold) {
-                    // Use the findValidDirection function to get a better path
-                    const validDirection = findValidDirection(
-                        companionPosition, 
-                        companionRadius, 
-                        directionToPlayer
-                    );
+                // Handle remote player backflip animation
+                if (isRemotePlayerBackflipping) {
+                    const backflipElapsed = currentTime - backflipStartTime;
+                    const backflipProgress = backflipElapsed / backflipDuration;
                     
-                    // Mix the valid direction with the direction to player
-                    moveDirection.copy(validDirection);
-                    
-                    // If still stuck for a long time, try more random directions
-                    if (companionStuckTime > stuckTimeThreshold * 3) {
-                        // Increase randomness the longer we're stuck
-                        const randomFactor = Math.min(0.8, (companionStuckTime - stuckTimeThreshold) / 5);
-                        moveDirection.lerp(companionAlternateDirection, randomFactor).normalize();
+                    // End backflip when animation completes
+                    if (backflipElapsed >= backflipDuration) {
+                        isRemotePlayerBackflipping = false;
                         
-                        // Reset stuck time after a while to try a fresh approach
-                        if (companionStuckTime > stuckTimeThreshold * 5) {
-                            companionStuckTime = stuckTimeThreshold;
-                            // Generate a completely new direction
-                            companionAlternateDirection.set(
-                                Math.random() - 0.5,
-                                0,
-                                Math.random() - 0.5
-                            ).normalize();
+                        // Transition back to idle animation
+                        if (remotePlayerBackflipAction) remotePlayerBackflipAction.weight = 0;
+                        if (remotePlayerIdleAction) {
+                            remotePlayerIdleAction.weight = 1;
+                            remotePlayerIdleAction.play();
                         }
                     }
                 }
-
-                if (distanceToPlayer > maxDistance) {
-                    const moveVector = moveDirection.clone()
-                        .multiplyScalar(companionSpeed * delta);
-                    // Ensure we only move in X and Z directions
-                    moveVector.y = 0;
-                    const newPosition = companionPosition.clone().add(moveVector);
-                    
-                    // Keep Y position fixed at ground level
-                    newPosition.y = 0;
-                    
-                    if (!checkCollision(newPosition, companionRadius)) {
-                        companionPosition.copy(newPosition);
-                        companionMoving = true;
-                    } else {
-                        // If we hit a wall, immediately try a different direction next frame
-                        companionStuckTime = stuckTimeThreshold;
-                        
-                        // Try to slide along the wall by removing movement component in collision direction
-                        const wallNormal = newPosition.clone().sub(companionPosition).normalize();
-                        
-                        // Try sliding in both possible directions along the wall
-                        const slideRight = new THREE.Vector3(wallNormal.z, 0, -wallNormal.x).normalize();
-                        const slideLeft = new THREE.Vector3(-wallNormal.z, 0, wallNormal.x).normalize();
-                        
-                        // Try right direction first
-                        let slideVector = slideRight.clone().multiplyScalar(companionSpeed * delta);
-                        let slidePosition = companionPosition.clone().add(slideVector);
-                        slidePosition.y = 0;
-                        
-                        // If right doesn't work, try left
-                        if (checkCollision(slidePosition, companionRadius)) {
-                            slideVector = slideLeft.clone().multiplyScalar(companionSpeed * delta);
-                            slidePosition = companionPosition.clone().add(slideVector);
-                            slidePosition.y = 0;
+                // Only update walking/idle animations if not backflipping
+                else if (remotePlayerWalkAction && remotePlayerIdleAction && !isRemotePlayerBackflipping) {
+                    if (remotePlayerMoving) {
+                        // Set animation direction based on movement
+                        if (remotePlayerMovingBackward) {
+                            // Play animation in reverse when moving backward
+                            remotePlayerWalkAction.timeScale = -1;
+                        } else {
+                            // Play animation forward when moving forward
+                            remotePlayerWalkAction.timeScale = 1;
                         }
                         
-                        if (!checkCollision(slidePosition, companionRadius)) {
-                            companionPosition.copy(slidePosition);
-                            companionMoving = true;
-                            
-                            // Update alternate direction to follow the successful slide direction
-                            if (slidePosition.distanceTo(companionPosition.clone().add(slideRight)) < 
-                                slidePosition.distanceTo(companionPosition.clone().add(slideLeft))) {
-                                companionAlternateDirection.copy(slideRight);
-                            } else {
-                                companionAlternateDirection.copy(slideLeft);
+                        // Crossfade from idle to walking
+                        if (remotePlayerWalkAction.weight < 1.0) {
+                            remotePlayerIdleAction.weight = 1 - remotePlayerWalkAction.weight;
+                            remotePlayerWalkAction.weight += delta / animationCrossfadeTime;
+                            if (remotePlayerWalkAction.weight > 1.0) {
+                                remotePlayerWalkAction.weight = 1.0;
+                                remotePlayerIdleAction.weight = 0.0;
                             }
                         }
-                    }
-                } else if (distanceToPlayer < minDistance) {
-                    const moveVector = moveDirection.clone()
-                        .multiplyScalar(-companionSpeed * delta * 0.5);
-                    // Ensure we only move in X and Z directions
-                    moveVector.y = 0;
-                    const newPosition = companionPosition.clone().add(moveVector);
-                    
-                    // Keep Y position fixed at ground level
-                    newPosition.y = 0;
-                    
-                    if (!checkCollision(newPosition, companionRadius)) {
-                        companionPosition.copy(newPosition);
-                        companionMoving = true;
-                    } else {
-                        // If we hit a wall, immediately try a different direction next frame
-                        companionStuckTime = stuckTimeThreshold;
                         
-                        // Try to slide along the wall by removing movement component in collision direction
-                        const wallNormal = newPosition.clone().sub(companionPosition).normalize();
-                        
-                        // Try sliding in both possible directions along the wall
-                        const slideRight = new THREE.Vector3(wallNormal.z, 0, -wallNormal.x).normalize();
-                        const slideLeft = new THREE.Vector3(-wallNormal.z, 0, wallNormal.x).normalize();
-                        
-                        // Try right direction first
-                        let slideVector = slideRight.clone().multiplyScalar(companionSpeed * delta);
-                        let slidePosition = companionPosition.clone().add(slideVector);
-                        slidePosition.y = 0;
-                        
-                        // If right doesn't work, try left
-                        if (checkCollision(slidePosition, companionRadius)) {
-                            slideVector = slideLeft.clone().multiplyScalar(companionSpeed * delta);
-                            slidePosition = companionPosition.clone().add(slideVector);
-                            slidePosition.y = 0;
+                        // Ensure walking animation is playing
+                        if (!remotePlayerWalkAction.isRunning()) {
+                            remotePlayerWalkAction.play();
                         }
                         
-                        if (!checkCollision(slidePosition, companionRadius)) {
-                            companionPosition.copy(slidePosition);
-                            companionMoving = true;
+                        // Play footstep sounds for remote player
+                        if (audioInitialized) {
+                            // Calculate step interval based on distance
+                            let remoteStepInterval = 0.5;
                             
-                            // Update alternate direction to follow the successful slide direction
-                            if (slidePosition.distanceTo(companionPosition.clone().add(slideRight)) < 
-                                slidePosition.distanceTo(companionPosition.clone().add(slideLeft))) {
-                                companionAlternateDirection.copy(slideRight);
-                            } else {
-                                companionAlternateDirection.copy(slideLeft);
+                            // Adjust step interval based on distance to player
+                            const distanceToPlayer = playerPosition.distanceTo(remotePlayerPosition);
+                            if (distanceToPlayer > 3) {
+                                remoteStepInterval = 0.4; // Faster steps when far away
+                            } else if (distanceToPlayer < 1.5) {
+                                remoteStepInterval = 0.6; // Slower steps when close
                             }
-                        }
-                    }
-                }
-
-                if (companionMoving) {
-                    companion.position.set(
-                        companionPosition.x,
-                        companionYOffset, // Apply small Y offset
-                        companionPosition.z
-                    );
-                    companion.lookAt(
-                        playerPosition.x,
-                        companion.position.y,
-                        playerPosition.z
-                    );
-                    if (walkAction) {
-                        walkAction.timeScale = 1.0;
-                    }
-                    
-                    // Play companion footstep sounds when moving
-                    if (audioInitialized) {
-                        // Calculate step interval based on movement speed and distance to player
-                        let companionStepInterval = 0.5; // Default step interval
-                        
-                        // Adjust step interval based on distance to player
-                        // When further from player, steps are faster as companion tries to catch up
-                        if (distanceToPlayer > maxDistance * 0.8) {
-                            companionStepInterval = 0.4; // Faster steps when far away
-                        } else if (distanceToPlayer < minDistance * 1.2) {
-                            companionStepInterval = 0.6; // Slower steps when close
-                        }
-                        
-                        // Add slight randomness to step timing
-                        companionStepInterval *= 0.9 + Math.random() * 0.2;
-                        
-                        if (currentTime - lastCompanionStepTime >= companionStepInterval) {
-                            playCompanionFootstep();
-                            lastCompanionStepTime = currentTime;
-                        }
+                            
+                            // Add slight randomness to step timing using seeded random
+                            remoteStepInterval *= 0.9 + remoteFootstepRandom.random() * 0.2;
+                            
+                            if (currentTime - lastRemoteStepTime >= remoteStepInterval) {
+                                playRemotePlayerFootstep();
+                                lastRemoteStepTime = currentTime;
+                            }
                     }
                 } else {
-                    companion.position.set(
-                        companionPosition.x,
-                        companionYOffset, // Apply small Y offset
-                        companionPosition.z
-                    );
-                    if (walkAction) {
-                        walkAction.timeScale = 0.0;
+                        // Crossfade from walking to idle
+                        if (remotePlayerIdleAction.weight < 1.0) {
+                            remotePlayerWalkAction.weight = 1 - remotePlayerIdleAction.weight;
+                            remotePlayerIdleAction.weight += delta / animationCrossfadeTime;
+                            if (remotePlayerIdleAction.weight > 1.0) {
+                                remotePlayerIdleAction.weight = 1.0;
+                                remotePlayerWalkAction.weight = 0.0;
+                            }
+                        }
+                        
+                        // Ensure idle animation is playing
+                        if (!remotePlayerIdleAction.isRunning()) {
+                            remotePlayerIdleAction.play();
+                        }
                     }
+                }
+                
+                // Check for collision between players
+                const playerToRemoteDistance = playerPosition.distanceTo(remotePlayerPosition);
+                if (playerToRemoteDistance < playerRadius + remotePlayerRadius) {
+                    // Push players apart slightly to prevent clipping
+                    const pushDirection = new THREE.Vector3()
+                        .subVectors(playerPosition, remotePlayerPosition)
+                        .normalize();
+                    
+                    const pushAmount = (playerRadius + remotePlayerRadius - playerToRemoteDistance) * 0.5;
+                    playerPosition.add(pushDirection.clone().multiplyScalar(pushAmount));
+                    cameraContainer.position.copy(playerPosition);
                 }
             }
 
             camera.position.copy(offset);
             camera.rotation.z = camera.rotation.z * 0.85 + targetRoll * 0.15;
+
+            // Handle local player backflip
+            if (isLocalPlayerBackflipping) {
+                const backflipElapsed = currentTime - backflipStartTime;
+                const backflipProgress = backflipElapsed / backflipDuration;
+                
+                // Rotate camera during backflip
+                if (backflipProgress <= 1.0) {
+                    // Rotate camera 360 degrees around X axis
+                    const rotationAngle = Math.PI * 2 * backflipProgress;
+                    camera.rotation.x = rotationAngle;
+                }
+                
+                // End backflip when animation completes
+                if (backflipElapsed >= backflipDuration) {
+                    isLocalPlayerBackflipping = false;
+                    
+                    // Reset camera rotation
+                    camera.rotation.x = 0;
+                }
+            }
 
             updateAudio();
 
@@ -1587,8 +1788,9 @@
                 
                 fluorescentBuzz.volume = masterVolume * distanceVolume;
                 
-                if (Math.random() < 0.05) {
-                    const fluctuation = 0.95 + Math.random() * 0.1;
+                // Use seeded random for audio fluctuations
+                if (audioRandom.random() < 0.05) {
+                    const fluctuation = 0.95 + audioRandom.random() * 0.1;
                     fluorescentBuzz.volume *= fluctuation;
                 }
             } else if (gameStarted && !fluorescentBuzz.muted) {
@@ -1600,10 +1802,10 @@
                 sound.volume = masterVolume * footstepVolume;
             });
             
-            // Update companion footstep volumes
-            companionStepSounds.forEach(sound => {
+            // Update remote player footstep volumes
+            remotePlayerStepSounds.forEach(sound => {
                 // Adjust volume based on distance to player
-                const distanceToPlayer = playerPosition.distanceTo(companionPosition);
+                const distanceToPlayer = playerPosition.distanceTo(remotePlayerPosition);
                 const maxDistance = 15;
                 const minDistance = 1;
                 
@@ -1614,6 +1816,422 @@
                 
                 sound.volume = masterVolume * footstepVolume * 0.4 * distanceFactor;
             });
+        }
+
+        // Multiplayer setup
+        function initPeerJS() {
+            peer = new Peer();
+            
+            peer.on('open', (id) => {
+                console.log('My peer ID is: ' + id);
+                myPeerIdElement.textContent = id;
+                multiplayerUI.style.display = 'block';
+            });
+            
+            peer.on('connection', (conn) => {
+                handleConnection(conn);
+                isHost = true;
+            });
+            
+            peer.on('error', (err) => {
+                console.error('PeerJS error:', err);
+                connectionStatus.textContent = 'Connection error: ' + err;
+            });
+            
+            connectButton.addEventListener('click', () => {
+                const remotePeerId = remotePeerIdInput.value.trim();
+                if (remotePeerId) {
+                    connectionStatus.textContent = 'Connecting...';
+                    const conn = peer.connect(remotePeerId);
+                    handleConnection(conn);
+                    isHost = false;
+                }
+            });
+        }
+        
+        function handleConnection(conn) {
+            connection = conn;
+            
+            connection.on('open', () => {
+                console.log('Connected to peer:', connection.peer);
+                connectionStatus.textContent = 'Connected to: ' + connection.peer;
+                isConnected = true;
+                
+                // Hide the connection form once connected
+                document.getElementById('connect-form').style.display = 'none';
+                
+                // Show system message
+                addChatMessage('Connected to another player', 'system');
+                addChatMessage('The maze layout is identical for all players', 'system');
+                
+                // Load the remote player model
+                loadRemotePlayerModel();
+            });
+            
+            connection.on('data', (data) => {
+                handlePeerData(data);
+            });
+            
+            connection.on('close', () => {
+                console.log('Connection closed');
+                connectionStatus.textContent = 'Connection closed';
+                isConnected = false;
+                
+                // Show system message
+                addChatMessage('Disconnected from player', 'system');
+                
+                // Show the connection form again
+                document.getElementById('connect-form').style.display = 'flex';
+                
+                // Remove the remote player model
+                if (remotePlayerModel) {
+                    scene.remove(remotePlayerModel);
+                    remotePlayerModel = null;
+                }
+            });
+            
+            connection.on('error', (err) => {
+                console.error('Connection error:', err);
+                connectionStatus.textContent = 'Connection error: ' + err;
+                
+                // Show system message
+                addChatMessage('Connection error: ' + err, 'system');
+            });
+        }
+        
+        function handlePeerData(data) {
+            if (data.type === 'position') {
+                // Update remote player position
+                remotePlayerPosition.set(
+                    data.position.x,
+                    data.position.y,
+                    data.position.z
+                );
+                
+                // Store the quaternion data for rotation
+                remotePlayerQuaternion.set(
+                    data.quaternion.x,
+                    data.quaternion.y,
+                    data.quaternion.z,
+                    data.quaternion.w
+                );
+                
+                remotePlayerMoving = data.isMoving;
+                remotePlayerMovingBackward = data.isMovingBackward; // Store backward movement state
+            } else if (data.type === 'chat') {
+                addChatMessage(data.message, 'other');
+            } else if (data.type === 'backflip') {
+                // Trigger backflip animation for remote player
+                if (remotePlayerBackflipAction && !isRemotePlayerBackflipping) {
+                    isRemotePlayerBackflipping = true;
+                    backflipStartTime = clock.getElapsedTime();
+                    
+                    // Reset weights of other animations
+                    if (remotePlayerIdleAction) remotePlayerIdleAction.weight = 0;
+                    if (remotePlayerWalkAction) remotePlayerWalkAction.weight = 0;
+                    
+                    // Set backflip animation weight to 1
+                    remotePlayerBackflipAction.reset();
+                    remotePlayerBackflipAction.weight = 1;
+                    remotePlayerBackflipAction.play();
+                    
+                    // Add chat message
+                    addChatMessage('Other player is doing a backflip!', 'system');
+                }
+            }
+        }
+        
+        function loadRemotePlayerModel() {
+            // Set up DRACO loader for decompression
+            const dracoLoader = new DRACOLoader();
+            dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+            
+            // Set up GLTF loader with DRACO loader
+            const loader = new GLTFLoader();
+            loader.setDRACOLoader(dracoLoader);
+            
+            loader.load(
+                'character.glb',
+                (gltf) => {
+                    console.log("GLTF model loaded successfully:", gltf);
+                    createRemotePlayerFromGLTF(gltf);
+                },
+                (xhr) => {
+                    console.log((xhr.loaded / xhr.total * 100) + '% loaded remote player model');
+                },
+                (error) => {
+                    console.error('Error loading GLTF model:', error);
+                    addChatMessage('Error loading character model, using fallback', 'system');
+                    createFallbackRemotePlayer();
+                }
+            );
+        }
+        
+        function createRemotePlayerFromGLTF(gltf) {
+            // Create a container for the model to handle rotation correctly
+            const modelContainer = new THREE.Group();
+            
+            // Get the model from the GLTF scene
+            const model = gltf.scene;
+            
+            // Add the model to the container with a 180-degree rotation
+            // This ensures the model faces forward relative to the camera direction
+            model.rotation.y = Math.PI;
+            modelContainer.add(model);
+            
+            // Position the container at the initial position
+            remotePlayerPosition.set(startingRoomWidth / 2 - 1, 0, startingRoomDepth / 2 - 1);
+            remotePlayerLastPosition.copy(remotePlayerPosition);
+            modelContainer.position.copy(remotePlayerPosition);
+            
+            // Add the container to the scene
+            scene.add(modelContainer);
+            
+            // Use the container as our remote player model
+            remotePlayerModel = modelContainer;
+            
+            // Log model dimensions to help with debugging
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            console.log("Model dimensions:", size);
+            
+            // Adjust scale to match desired height (around 1.7-1.8 units)
+            const targetHeight = 3.0;
+            if (size.y > 0) {
+                const scale = targetHeight / size.y;
+                model.scale.set(scale, scale, scale);
+                console.log("Adjusted model scale to:", scale);
+                
+                // Recalculate bounding box after scaling
+                const newBox = new THREE.Box3().setFromObject(model);
+                const newSize = newBox.getSize(new THREE.Vector3());
+                console.log("New model dimensions:", newSize);
+                
+                // Adjust Y offset based on model height
+                remotePlayerYOffset = 0; // Reset to zero as we've scaled the model appropriately
+            }
+            
+            // Setup animation mixer
+            remotePlayerMixer = new THREE.AnimationMixer(model);
+            
+            // Find the idle and walking animations
+            let idleAnimation = null;
+            let walkingAnimation = null;
+            let backflipAnimation = null;
+
+            if (gltf.animations && gltf.animations.length > 0) {
+                console.log("Available animations:", gltf.animations);
+                
+                // Find animations by name
+                gltf.animations.forEach(clip => {
+                    if (clip.name.toLowerCase().includes('idle')) {
+                        idleAnimation = clip;
+                    } else if (clip.name.toLowerCase().includes('walk')) {
+                        walkingAnimation = clip;
+                    } else if (clip.name.toLowerCase().includes('backflip')) {
+                        backflipAnimation = clip;
+                    }
+                });
+                
+                // If we found the animations, set them up
+                if (idleAnimation) {
+                    console.log("Found idle animation:", idleAnimation);
+                    remotePlayerIdleAction = remotePlayerMixer.clipAction(idleAnimation);
+                    remotePlayerIdleAction.setLoop(THREE.LoopRepeat);
+                    remotePlayerIdleAction.play();
+                    remotePlayerIdleAction.weight = 1.0; // Start with idle animation fully weighted
+                } else {
+                    console.warn("No idle animation found");
+                }
+                
+                if (walkingAnimation) {
+                    console.log("Found walking animation:", walkingAnimation);
+                    remotePlayerWalkAction = remotePlayerMixer.clipAction(walkingAnimation);
+                    remotePlayerWalkAction.setLoop(THREE.LoopRepeat);
+                    remotePlayerWalkAction.timeScale = 1; // Set initial timeScale to forward
+                    remotePlayerWalkAction.play();
+                    remotePlayerWalkAction.weight = 0.0; // Start with walking animation at zero weight
+                } else {
+                    console.warn("No walking animation found");
+                }
+                
+                if (backflipAnimation) {
+                    console.log("Found backflip animation:", backflipAnimation);
+                    remotePlayerBackflipAction = remotePlayerMixer.clipAction(backflipAnimation);
+                    remotePlayerBackflipAction.setLoop(THREE.LoopOnce); // Only play once
+                    remotePlayerBackflipAction.clampWhenFinished = true; // Hold the last frame when finished
+                    remotePlayerBackflipAction.timeScale = 1;
+                    remotePlayerBackflipAction.weight = 0.0; // Start with backflip animation at zero weight
+                    
+                    // Get the duration of the backflip animation
+                    backflipDuration = backflipAnimation.duration;
+                    console.log("Backflip duration:", backflipDuration);
+                } else {
+                    console.warn("No backflip animation found");
+                }
+            } else {
+                console.warn("No animations found in the model");
+            }
+            
+            // Compute bounding box and apply materials
+            model.traverse((child) => {
+                if (child.isMesh) {
+                    console.log("Found mesh in model:", child.name);
+                    child.geometry.computeBoundingBox();
+                    
+                    // Apply materials if needed
+                    if (child.material) {
+                        // You can customize the remote player's appearance here if desired
+                        // For example, to make them a different color:
+                        // if (Array.isArray(child.material)) {
+                        //     child.material.forEach(mat => {
+                        //         mat.color.setHex(0x66a8e5); // Blue tint
+                        //     });
+                        // } else {
+                        //     child.material.color.setHex(0x66a8e5); // Blue tint
+                        // }
+                        child.material.needsUpdate = true;
+                    }
+                }
+            });
+            
+            // Create a direction helper arrow
+            const arrowDir = new THREE.Vector3(0, 0, -1);
+            const arrowOrigin = new THREE.Vector3(0, 1.5, 0);
+            const arrowLength = 2;
+            const arrowColor = 0xff0000;
+            const headLength = 0.5; // Length of the arrow head
+            const headWidth = 0.3; // Width of the arrow head
+            directionHelper = new THREE.ArrowHelper(arrowDir, arrowOrigin, arrowLength, arrowColor, headLength, headWidth);
+            remotePlayerModel.add(directionHelper);
+            
+            // Add debug objects to help visualize the model position
+            // Red sphere at the center
+            const centerSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.1, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xff0000 })
+            );
+            centerSphere.position.set(0, 0, 0);
+            remotePlayerModel.add(centerSphere);
+            
+            // Green sphere at head height
+            const headSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.1, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+            );
+            headSphere.position.set(0, 1.5, 0);
+            remotePlayerModel.add(headSphere);
+            
+            // Blue sphere in front
+            const frontSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.1, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0x0000ff })
+            );
+            frontSphere.position.set(0, 1, -1);
+            remotePlayerModel.add(frontSphere);
+            
+            // Show system message
+            addChatMessage('Remote player model loaded', 'system');
+            addChatMessage('Press V to toggle direction helper', 'system');
+        }
+        
+        function createFallbackRemotePlayer() {
+            // Create a simple humanoid shape as fallback
+            const modelContainer = new THREE.Group();
+            
+            // Create a body
+            const bodyGeometry = new THREE.CapsuleGeometry(0.3, 1.0, 4, 8);
+            const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x66a8e5 });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.set(0, 0.8, 0);
+            modelContainer.add(body);
+            
+            // Create a head
+            const headGeometry = new THREE.SphereGeometry(0.25, 16, 16);
+            const headMaterial = new THREE.MeshBasicMaterial({ color: 0x66a8e5 });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.set(0, 1.7, 0);
+            modelContainer.add(head);
+            
+            // Position the container at the initial position
+            remotePlayerPosition.set(startingRoomWidth / 2 - 1, 0, startingRoomDepth / 2 - 1);
+            remotePlayerLastPosition.copy(remotePlayerPosition);
+            modelContainer.position.copy(remotePlayerPosition);
+            
+            // Add the container to the scene
+            scene.add(modelContainer);
+            
+            // Use the container as our remote player model
+            remotePlayerModel = modelContainer;
+            
+            // Create a direction helper arrow
+            const arrowDir = new THREE.Vector3(0, 0, -1);
+            const arrowOrigin = new THREE.Vector3(0, 1.5, 0);
+            const arrowLength = 2;
+            const arrowColor = 0xff0000;
+            const headLength = 0.5;
+            const headWidth = 0.3;
+            directionHelper = new THREE.ArrowHelper(arrowDir, arrowOrigin, arrowLength, arrowColor, headLength, headWidth);
+            remotePlayerModel.add(directionHelper);
+            
+            // Add debug spheres
+            const centerSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.1, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xff0000 })
+            );
+            centerSphere.position.set(0, 0, 0);
+            remotePlayerModel.add(centerSphere);
+            
+            const frontSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.1, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0x0000ff })
+            );
+            frontSphere.position.set(0, 1, -1);
+            remotePlayerModel.add(frontSphere);
+            
+            // Show system message
+            addChatMessage('Using fallback player model', 'system');
+            addChatMessage('Press V to toggle direction helper', 'system');
+        }
+
+        // Initialize game
+        function initGame() {
+            gameStarted = true;
+            loadingScreen.style.opacity = '0';
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+                controls.lock();
+                initAudio();
+                initPeerJS(); // Initialize PeerJS when the game starts
+                initChat(); // Initialize chat system
+            }, 1000);
+            
+            clock.start();
+            animate();
+        }
+
+        // Start button event listener
+        startButton.addEventListener('click', initGame);
+
+        // Handle local player backflip
+        if (isLocalPlayerBackflipping) {
+            const backflipElapsed = currentTime - backflipStartTime;
+            const backflipProgress = backflipElapsed / backflipDuration;
+            
+            // Rotate camera during backflip
+            if (backflipProgress <= 1.0) {
+                // Rotate camera 360 degrees around X axis
+                const rotationAngle = Math.PI * 2 * backflipProgress;
+                camera.rotation.x = rotationAngle;
+            }
+            
+            // End backflip when animation completes
+            if (backflipElapsed >= backflipDuration) {
+                isLocalPlayerBackflipping = false;
+                
+                // Reset camera rotation
+                camera.rotation.x = 0;
+            }
         }
     </script>
 </body>
