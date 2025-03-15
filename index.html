@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Multiplayer Backrooms Game</title>
     <style>
         body { margin: 0; overflow: hidden; }
@@ -236,6 +236,173 @@
             color: #e566a8;
             font-style: italic;
         }
+        
+        #voice-chat-controls {
+            position: fixed;
+            top: 40px;
+            right: 10px;
+            color: #e9e566;
+            font-family: monospace;
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 1px 1px 2px #000;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+            text-align: right;
+        }
+        
+        #voice-chat-status {
+            margin-bottom: 10px;
+        }
+        
+        #voice-chat-controls button {
+            padding: 5px 10px;
+            background-color: #e9e566;
+            color: #000;
+            border: none;
+            font-family: monospace;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        
+        #voice-chat-controls button:hover {
+            background-color: #fff;
+        }
+        
+        #voice-chat-controls button.active {
+            background-color: #a8e566;
+        }
+        
+        #voice-chat-controls button.muted {
+            background-color: #e56666;
+        }
+        
+        #voice-chat-toggle.active, #voice-chat-mute.active {
+            background-color: #fff;
+        }
+        
+        /* Mobile Controls */
+        #mobile-controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5;
+            pointer-events: none;
+            display: none;
+        }
+        
+        #joystick-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 120px;
+            height: 120px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border: 2px solid #e9e566;
+            border-radius: 50%;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        
+        #joystick {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            background-color: #e9e566;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        #mobile-action-buttons {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: auto;
+        }
+        
+        .mobile-button {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 2px solid #e9e566;
+            border-radius: 50%;
+            color: #e9e566;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .mobile-button.active {
+            background-color: #e9e566;
+            color: #000;
+        }
+        
+        #mobile-controls-toggle {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            padding: 5px 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 1px solid #e9e566;
+            color: #e9e566;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 20;
+            cursor: pointer;
+            display: none;
+        }
+        
+        /* Responsive adjustments for mobile */
+        @media (max-width: 768px) {
+            #loading-bar-container {
+                width: 80%;
+            }
+            
+            #game-ui {
+                font-size: 12px;
+                max-width: 80%;
+            }
+            
+            #chat-container {
+                width: 80%;
+                max-width: 300px;
+            }
+            
+            #multiplayer-ui {
+                max-width: 80%;
+            }
+            
+            #voice-chat-controls {
+                bottom: 80px;
+            }
+            
+            #desktop-controls {
+                display: none;
+            }
+            
+            #mobile-controls-info {
+                display: block;
+            }
+        }
+        
+        /* Hide mobile controls info by default (for desktop) */
+        #mobile-controls-info {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -249,7 +416,8 @@
     </div>
     
     <div id="game-ui" style="display: none;">
-        <div>WASD: Move | SHIFT: Run | CTRL: Crouch | F: Backflip | CLICK: Look | T: Chat | V: Toggle Direction Helper</div>
+        <div id="desktop-controls">WASD: Move | SHIFT: Run | CTRL: Crouch | F: Backflip | CLICK: Look | T: Chat | V: Toggle Direction Helper | B: Toggle Voice Chat</div>
+        <div id="mobile-controls-info">Use the joystick to move, swipe to look around, and the buttons for actions</div>
     </div>
     
     <div id="fps-counter" style="display: none;">FPS: 0</div>
@@ -278,6 +446,27 @@
             <button type="submit" id="chat-send">Send</button>
         </form>
     </div>
+    
+    <!-- Voice Chat Controls -->
+    <div id="voice-chat-controls">
+        <div id="voice-chat-status">Voice Chat: Disconnected</div>
+        <button id="voice-chat-toggle">Enable Voice</button>
+        <button id="voice-chat-mute">Mute Mic</button>
+    </div>
+    
+    <!-- Mobile Controls -->
+    <div id="mobile-controls">
+        <div id="joystick-container">
+            <div id="joystick"></div>
+        </div>
+        <div id="mobile-action-buttons">
+            <div id="run-button" class="mobile-button">RUN</div>
+            <div id="crouch-button" class="mobile-button">DUCK</div>
+            <div id="action-button" class="mobile-button">ACT</div>
+        </div>
+    </div>
+    
+    <button id="mobile-controls-toggle">Toggle Controls</button>
     
     <audio id="fluorescent-buzz" loop preload="auto">
         <source src="fluorescent.mp3" type="audio/mpeg">
@@ -318,7 +507,30 @@
         const chatMessages = document.getElementById('chat-messages');
         const chatForm = document.getElementById('chat-form');
         const chatInput = document.getElementById('chat-input');
+        const volumeSlider = document.getElementById('volume-slider');
+        const volumeValue = document.getElementById('volume-value');
+        const fluorescentBuzz = document.getElementById('fluorescent-buzz');
+        const mobileControls = document.getElementById('mobile-controls');
+        const joystickContainer = document.getElementById('joystick-container');
+        const joystick = document.getElementById('joystick');
+        const runButton = document.getElementById('run-button');
+        const crouchButton = document.getElementById('crouch-button');
+        const actionButton = document.getElementById('action-button');
+        const mobileControlsToggle = document.getElementById('mobile-controls-toggle');
         
+        // Detect if device is mobile
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        // Variables for mobile controls
+        let joystickActive = false;
+        let joystickTouchId = null;
+        let joystickPosition = { x: 0, y: 0 };
+        let lookTouchId = null;
+        let previousTouchX = 0;
+        let previousTouchY = 0;
+        let touchLookSensitivity = 0.1;
+        
+        // Game state variables
         let gameStarted = false;
         let audioInitialized = false;
         let isChatting = false;
@@ -459,23 +671,285 @@
         cameraContainer.add(camera);
         camera.position.set(0, 0, 0);
 
+        // Initialize controls
         const controls = new PointerLockControls(cameraContainer, renderer.domElement);
         
+        // Setup for mobile
+        if (isMobile) {
+            // Show mobile controls
+            mobileControls.style.display = 'block';
+            mobileControlsToggle.style.display = 'block';
+            
+            // Initialize joystick position
+            const joystickRect = joystickContainer.getBoundingClientRect();
+            joystickPosition = {
+                x: joystickRect.left + joystickRect.width / 2,
+                y: joystickRect.top + joystickRect.height / 2
+            };
+            
+            // Setup mobile control event listeners
+            setupMobileControls();
+        }
+        
+        // Setup mobile controls
+        function setupMobileControls() {
+            // Joystick touch events
+            joystickContainer.addEventListener('touchstart', handleJoystickStart, false);
+            joystickContainer.addEventListener('touchmove', handleJoystickMove, false);
+            joystickContainer.addEventListener('touchend', handleJoystickEnd, false);
+            
+            // Look touch events (anywhere except UI elements and joystick)
+            document.addEventListener('touchstart', handleLookStart, false);
+            document.addEventListener('touchmove', handleLookMove, false);
+            document.addEventListener('touchend', handleLookEnd, false);
+            
+            // Action buttons
+            runButton.addEventListener('touchstart', () => {
+                isRunning = true;
+                runButton.classList.add('active');
+            });
+            
+            runButton.addEventListener('touchend', () => {
+                isRunning = false;
+                runButton.classList.remove('active');
+            });
+            
+            crouchButton.addEventListener('touchstart', () => {
+                if (!isCrouching) {
+                    isCrouching = true;
+                    camera.position.y -= 0.5;
+                    playerPosition.y -= 0.5;
+                    crouchButton.classList.add('active');
+                }
+            });
+            
+            crouchButton.addEventListener('touchend', () => {
+                if (isCrouching) {
+                    isCrouching = false;
+                    camera.position.y += 0.5;
+                    playerPosition.y += 0.5;
+                    crouchButton.classList.remove('active');
+                }
+            });
+            
+            actionButton.addEventListener('touchstart', () => {
+                // Trigger backflip
+                if (!isLocalPlayerBackflipping && remotePlayerBackflipAction) {
+                    isLocalPlayerBackflipping = true;
+                    backflipStartTime = clock.getElapsedTime();
+                    
+                    // Play backflip animation on local player's model
+                    if (remotePlayerBackflipAction) {
+                        // Reset weights of other animations
+                        if (remotePlayerIdleAction) remotePlayerIdleAction.weight = 0;
+                        if (remotePlayerWalkAction) remotePlayerWalkAction.weight = 0;
+                        
+                        // Set backflip animation weight to 1
+                        remotePlayerBackflipAction.reset();
+                        remotePlayerBackflipAction.weight = 1;
+                        remotePlayerBackflipAction.play();
+                    }
+                    
+                    // Send backflip event to other player if connected
+                    if (isConnected && connection) {
+                        connection.send({
+                            type: 'backflip',
+                            startTime: backflipStartTime
+                        });
+                        
+                        // Add chat message
+                        addChatMessage('You did a backflip!', 'system');
+                    }
+                    
+                    actionButton.classList.add('active');
+                    setTimeout(() => {
+                        actionButton.classList.remove('active');
+                    }, backflipDuration * 1000);
+                }
+            });
+            
+            // Toggle mobile controls visibility
+            mobileControlsToggle.addEventListener('click', () => {
+                if (mobileControls.style.display === 'none') {
+                    mobileControls.style.display = 'block';
+                } else {
+                    mobileControls.style.display = 'none';
+                }
+            });
+        }
+        
+        // Handle joystick touch start
+        function handleJoystickStart(event) {
+            event.preventDefault();
+            if (!joystickActive) {
+                const touch = event.touches[0];
+                joystickTouchId = touch.identifier;
+                joystickActive = true;
+                updateJoystickPosition(touch.clientX, touch.clientY);
+            }
+        }
+        
+        // Handle joystick touch move
+        function handleJoystickMove(event) {
+            event.preventDefault();
+            if (joystickActive) {
+                for (let i = 0; i < event.touches.length; i++) {
+                    const touch = event.touches[i];
+                    if (touch.identifier === joystickTouchId) {
+                        updateJoystickPosition(touch.clientX, touch.clientY);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Handle joystick touch end
+        function handleJoystickEnd(event) {
+            event.preventDefault();
+            let touchFound = false;
+            
+            // Check if our tracked touch is still active
+            for (let i = 0; i < event.touches.length; i++) {
+                if (event.touches[i].identifier === joystickTouchId) {
+                    touchFound = true;
+                    break;
+                }
+            }
+            
+            if (!touchFound) {
+                // Reset joystick
+                joystickActive = false;
+                joystick.style.transform = 'translate(-50%, -50%)';
+                
+                // Reset movement flags
+                moveForward = false;
+                moveBackward = false;
+                moveLeft = false;
+                moveRight = false;
+            }
+        }
+        
+        // Update joystick position and movement flags
+        function updateJoystickPosition(touchX, touchY) {
+            const joystickRect = joystickContainer.getBoundingClientRect();
+            const centerX = joystickRect.left + joystickRect.width / 2;
+            const centerY = joystickRect.top + joystickRect.height / 2;
+            
+            // Calculate distance from center
+            let deltaX = touchX - centerX;
+            let deltaY = touchY - centerY;
+            
+            // Limit joystick movement to container radius
+            const maxRadius = joystickRect.width / 2 - joystick.offsetWidth / 2;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            if (distance > maxRadius) {
+                const angle = Math.atan2(deltaY, deltaX);
+                deltaX = Math.cos(angle) * maxRadius;
+                deltaY = Math.sin(angle) * maxRadius;
+            }
+            
+            // Update joystick visual position
+            joystick.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
+            
+            // Normalize for movement (values between -1 and 1)
+            const normalizedX = deltaX / maxRadius;
+            const normalizedY = deltaY / maxRadius;
+            
+            // Set movement flags based on joystick position
+            const deadzone = 0.2;
+            moveForward = normalizedY < -deadzone;
+            moveBackward = normalizedY > deadzone;
+            moveLeft = normalizedX < -deadzone;
+            moveRight = normalizedX > deadzone;
+        }
+        
+        // Handle look touch start
+        function handleLookStart(event) {
+            if (joystickActive || !gameStarted || isChatting) return;
+            
+            // Find a touch that's not on the joystick or UI elements
+            for (let i = 0; i < event.touches.length; i++) {
+                const touch = event.touches[i];
+                
+                // Skip if this touch is already being used for joystick
+                if (touch.identifier === joystickTouchId) continue;
+                
+                // Check if touch is on a UI element
+                const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                const isUIElement = element.closest('#joystick-container, #mobile-action-buttons, #multiplayer-ui, #chat-container, #voice-chat-controls, #mobile-controls-toggle');
+                
+                if (!isUIElement) {
+                    lookTouchId = touch.identifier;
+                    previousTouchX = touch.clientX;
+                    previousTouchY = touch.clientY;
+                    break;
+                }
+            }
+        }
+        
+        // Handle look touch move
+        function handleLookMove(event) {
+            if (lookTouchId === null || !gameStarted || isChatting) return;
+            
+            for (let i = 0; i < event.touches.length; i++) {
+                const touch = event.touches[i];
+                if (touch.identifier === lookTouchId) {
+                    // Calculate movement delta
+                    const deltaX = touch.clientX - previousTouchX;
+                    const deltaY = touch.clientY - previousTouchY;
+                    
+                    // Rotate camera based on touch movement
+                    controls.rotateLeft(-deltaX * touchLookSensitivity * 0.002);
+                    controls.rotateUp(-deltaY * touchLookSensitivity * 0.002);
+                    
+                    // Update previous position
+                    previousTouchX = touch.clientX;
+                    previousTouchY = touch.clientY;
+                    break;
+                }
+            }
+        }
+        
+        // Handle look touch end
+        function handleLookEnd(event) {
+            let touchFound = false;
+            
+            // Check if our tracked touch is still active
+            for (let i = 0; i < event.touches.length; i++) {
+                if (event.touches[i].identifier === lookTouchId) {
+                    touchFound = true;
+                    break;
+                }
+            }
+            
+            if (!touchFound) {
+                lookTouchId = null;
+            }
+        }
+        
         document.addEventListener('click', () => {
-            if (gameStarted) {
+            if (!gameStarted) return;
+            
+            // Only lock controls on desktop
+            if (!isMobile && !controls.isLocked) {
                 controls.lock();
             }
         });
         
         controls.addEventListener('lock', () => {
-            if (gameStarted && uiVisible) {
-                document.getElementById('game-ui').style.display = 'block';
-            }
+            if (isChatting) return;
+            document.getElementById('game-ui').style.display = 'block';
+            document.getElementById('fps-counter').style.display = 'block';
+            document.getElementById('audio-controls').style.display = 'block';
         });
         
         controls.addEventListener('unlock', () => {
-            if (gameStarted && uiVisible) {
-                document.getElementById('game-ui').style.display = 'block';
+            // On mobile, don't hide UI when controls are unlocked
+            if (!isMobile && !isChatting) {
+                document.getElementById('game-ui').style.display = 'none';
+                document.getElementById('fps-counter').style.display = 'none';
+                document.getElementById('audio-controls').style.display = 'none';
             }
         });
 
@@ -484,7 +958,8 @@
         let isCrouching = false;
         let uiVisible = false;
 
-        const fluorescentBuzz = document.getElementById('fluorescent-buzz');
+        // fluorescentBuzz is now declared earlier in the code
+        // const fluorescentBuzz = document.getElementById('fluorescent-buzz');
         
         const stepSounds = [];
         const STEP_COUNT = 12;
@@ -505,8 +980,9 @@
             remotePlayerStepSounds.push(remoteStepSound);
         }
         
-        const volumeSlider = document.getElementById('volume-slider');
-        const volumeValue = document.getElementById('volume-value');
+        // These variables are now declared earlier in the code
+        // const volumeSlider = document.getElementById('volume-slider');
+        // const volumeValue = document.getElementById('volume-value');
         let masterVolume = 0.7;
         let footstepVolume = 0.5;
         let lastStepTime = 0;
@@ -527,18 +1003,22 @@
         function initAudio() {
             if (audioInitialized) return;
             
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
-            if (audioContext.state === 'suspended') {
-                audioContext.resume();
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                
+                fluorescentBuzz.play().then(() => {
+                    console.log("Audio playback started successfully");
+                    audioInitialized = true;
+                }).catch(error => {
+                    console.log("Audio playback failed:", error);
+                });
+            } catch (error) {
+                console.error('Error initializing audio context:', error);
             }
-            
-            fluorescentBuzz.play().then(() => {
-                console.log("Audio playback started successfully");
-                audioInitialized = true;
-            }).catch(error => {
-                console.log("Audio playback failed:", error);
-            });
         }
         
         function playFootstep() {
@@ -690,6 +1170,9 @@
                         directionHelper.visible = showDirectionHelper;
                         addChatMessage(`Direction helper ${showDirectionHelper ? 'shown' : 'hidden'}`, 'system');
                     }
+                    break;
+                case 'KeyB':
+                    voiceChatToggle.click();
                     break;
             }
         });
@@ -1212,15 +1695,9 @@
         ceiling.position.set(floorSize / 2, 5, floorSize / 2);
         scene.add(ceiling);
 
-        // Add ambient light to the entire scene
-        const ambientLight = new THREE.AmbientLight(0xffffcc, 0.3); // Soft yellowish ambient light
-        scene.add(ambientLight);
-
         const lights = [];
-        // Create light panels for all rooms but only add actual lights to a subset
         for (let i = 0; i < N; i++) {
             for (let j = 0; j < M; j++) {
-                // Always create the light panel (visual element)
                 const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
                 const lightMaterial = new THREE.MeshBasicMaterial({
                     color: 0xffffff,
@@ -1232,60 +1709,53 @@
                 lightPanel.rotation.x = Math.PI / 2;
                 scene.add(lightPanel);
 
-                // Only add actual lights to a very sparse subset of rooms (every 4th room in both directions)
-                if (i % 4 === 0 && j % 4 === 0) {
-                    const light = new THREE.PointLight(0xffffee, 8, 40); // Adjusted intensity and increased range
-                    light.position.set((j + 0.5) * roomSize, 4.5, mazeOffsetZ + (i + 0.5) * roomSize);
-                    scene.add(light);
-                    lights.push(light);
-                }
+                const light = new THREE.PointLight(0xffffee, 7, 20);
+                light.position.set((j + 0.5) * roomSize, 4.5, mazeOffsetZ + (i + 0.5) * roomSize);
+                scene.add(light);
+                lights.push(light);
             }
         }
 
-        // Reduce lights in starting room - only add 1-2 lights instead of many
-        const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
-        const lightMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffffff,
-            side: THREE.DoubleSide
-        });
-
-        // Add light panels to all positions for visual consistency
         for (let x = 2; x < startingRoomWidth; x += 4) {
             for (let z = 2; z < startingRoomDepth; z += 4) {
+                const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
+                const lightMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    side: THREE.DoubleSide
+                });
+
                 const lightPanel = new THREE.Mesh(lightGeometry, lightMaterial);
                 lightPanel.position.set(x, 4.99, z);
                 lightPanel.rotation.x = Math.PI / 2;
                 scene.add(lightPanel);
+
+                const light = new THREE.PointLight(0xffffee, 7, 20);
+                light.position.set(x, 4.5, z);
+                scene.add(light);
+                lights.push(light);
             }
         }
-        
-        // But only add one actual light in the center of the starting room
-        const startingRoomLight = new THREE.PointLight(0xffffee, 10, 35); // Adjusted intensity
-        startingRoomLight.position.set(startingRoomWidth / 2, 4.5, startingRoomDepth / 2);
-        scene.add(startingRoomLight);
-        lights.push(startingRoomLight);
 
         const hallwayStartZ = startingRoomDepth;
         const hallwayStartX = (startingRoomWidth - hallwayWidth) / 2;
-        
-        // Add light panels along the hallway for visual consistency
         for (let z = hallwayStartZ + 4; z < hallwayStartZ + hallwayLength; z += 6) {
             const x = hallwayStartX + hallwayWidth / 2;
             
-            const hallwayLightPanel = new THREE.Mesh(lightGeometry.clone(), lightMaterial.clone());
-            hallwayLightPanel.position.set(x, 4.99, z);
-            hallwayLightPanel.rotation.x = Math.PI / 2;
-            scene.add(hallwayLightPanel);
-        }
-        
-        // But only add a few actual lights in the hallway, spaced very far apart
-        for (let z = hallwayStartZ + 25; z < hallwayStartZ + hallwayLength; z += 50) {
-            const x = hallwayStartX + hallwayWidth / 2;
-            
-            const hallwayLight = new THREE.PointLight(0xffffee, 8, 45); // Adjusted intensity and increased range
-            hallwayLight.position.set(x, 4.5, z);
-            scene.add(hallwayLight);
-            lights.push(hallwayLight);
+            const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
+            const lightMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                side: THREE.DoubleSide
+            });
+
+            const lightPanel = new THREE.Mesh(lightGeometry, lightMaterial);
+            lightPanel.position.set(x, 4.99, z);
+            lightPanel.rotation.x = Math.PI / 2;
+            scene.add(lightPanel);
+
+            const light = new THREE.PointLight(0xffffee, 7, 20);
+            light.position.set(x, 4.5, z);
+            scene.add(light);
+            lights.push(light);
         }
 
         let playerPosition = new THREE.Vector3(startingRoomWidth / 2, 2.0, startingRoomDepth / 2);
@@ -1641,17 +2111,26 @@
                 // Handle remote player backflip animation
                 if (isRemotePlayerBackflipping) {
                     const backflipElapsed = currentTime - backflipStartTime;
-                    const backflipProgress = backflipElapsed / backflipDuration;
                     
                     // End backflip when animation completes
                     if (backflipElapsed >= backflipDuration) {
                         isRemotePlayerBackflipping = false;
                         
-                        // Transition back to idle animation
-                        if (remotePlayerBackflipAction) remotePlayerBackflipAction.weight = 0;
+                        // Properly reset all animation weights
+                        if (remotePlayerBackflipAction) {
+                            remotePlayerBackflipAction.stop();
+                            remotePlayerBackflipAction.weight = 0;
+                        }
+                        
+                        // Reset to idle state
                         if (remotePlayerIdleAction) {
-                            remotePlayerIdleAction.weight = 1;
+                            remotePlayerIdleAction.reset();
                             remotePlayerIdleAction.play();
+                            remotePlayerIdleAction.weight = 1;
+                        }
+                        if (remotePlayerWalkAction) {
+                            remotePlayerWalkAction.reset();
+                            remotePlayerWalkAction.weight = 0;
                         }
                     }
                 }
@@ -1660,63 +2139,53 @@
                     if (remotePlayerMoving) {
                         // Set animation direction based on movement
                         if (remotePlayerMovingBackward) {
-                            // Play animation in reverse when moving backward
                             remotePlayerWalkAction.timeScale = -1;
                         } else {
-                            // Play animation forward when moving forward
                             remotePlayerWalkAction.timeScale = 1;
                         }
                         
+                        // Ensure backflip is completely stopped
+                        if (remotePlayerBackflipAction) {
+                            remotePlayerBackflipAction.stop();
+                            remotePlayerBackflipAction.weight = 0;
+                        }
+                        
                         // Crossfade from idle to walking
-                        if (remotePlayerWalkAction.weight < 1.0) {
-                            remotePlayerIdleAction.weight = 1 - remotePlayerWalkAction.weight;
-                            remotePlayerWalkAction.weight += delta / animationCrossfadeTime;
-                            if (remotePlayerWalkAction.weight > 1.0) {
-                                remotePlayerWalkAction.weight = 1.0;
-                                remotePlayerIdleAction.weight = 0.0;
-                            }
-                        }
+                        remotePlayerWalkAction.play();
+                        remotePlayerIdleAction.play();
                         
-                        // Ensure walking animation is playing
-                        if (!remotePlayerWalkAction.isRunning()) {
-                            remotePlayerWalkAction.play();
-                        }
+                        remotePlayerWalkAction.weight = Math.min(1, remotePlayerWalkAction.weight + delta / animationCrossfadeTime);
+                        remotePlayerIdleAction.weight = 1 - remotePlayerWalkAction.weight;
                         
-                        // Play footstep sounds for remote player
-                        if (audioInitialized) {
-                            // Calculate step interval based on distance
-                            let remoteStepInterval = 0.5;
-                            
-                            // Adjust step interval based on distance to player
-                            const distanceToPlayer = playerPosition.distanceTo(remotePlayerPosition);
-                            if (distanceToPlayer > 3) {
-                                remoteStepInterval = 0.4; // Faster steps when far away
-                            } else if (distanceToPlayer < 1.5) {
-                                remoteStepInterval = 0.6; // Slower steps when close
-                            }
-                            
-                            // Add slight randomness to step timing using seeded random
-                            remoteStepInterval *= 0.9 + remoteFootstepRandom.random() * 0.2;
-                            
-                            if (currentTime - lastRemoteStepTime >= remoteStepInterval) {
-                                playRemotePlayerFootstep();
-                                lastRemoteStepTime = currentTime;
-                            }
-                    }
-                } else {
+                    } else {
                         // Crossfade from walking to idle
-                        if (remotePlayerIdleAction.weight < 1.0) {
-                            remotePlayerWalkAction.weight = 1 - remotePlayerIdleAction.weight;
-                            remotePlayerIdleAction.weight += delta / animationCrossfadeTime;
-                            if (remotePlayerIdleAction.weight > 1.0) {
-                                remotePlayerIdleAction.weight = 1.0;
-                                remotePlayerWalkAction.weight = 0.0;
-                            }
+                        remotePlayerWalkAction.weight = Math.max(0, remotePlayerWalkAction.weight - delta / animationCrossfadeTime);
+                        remotePlayerIdleAction.weight = 1 - remotePlayerWalkAction.weight;
+                        
+                        if (remotePlayerWalkAction.weight === 0) {
+                            remotePlayerWalkAction.stop();
+                        }
+                    }
+                    
+                    // Play footstep sounds for remote player when moving
+                    if (remotePlayerMoving && audioInitialized) {
+                        // Calculate step interval based on distance
+                        let remoteStepInterval = 0.5;
+                        
+                        // Adjust step interval based on distance to player
+                        const distanceToPlayer = playerPosition.distanceTo(remotePlayerPosition);
+                        if (distanceToPlayer > 3) {
+                            remoteStepInterval = 0.4; // Faster steps when far away
+                        } else if (distanceToPlayer < 1.5) {
+                            remoteStepInterval = 0.6; // Slower steps when close
                         }
                         
-                        // Ensure idle animation is playing
-                        if (!remotePlayerIdleAction.isRunning()) {
-                            remotePlayerIdleAction.play();
+                        // Add slight randomness to step timing using seeded random
+                        remoteStepInterval *= 0.9 + remoteFootstepRandom.random() * 0.2;
+                        
+                        if (currentTime - lastRemoteStepTime >= remoteStepInterval) {
+                            playRemotePlayerFootstep();
+                            lastRemoteStepTime = currentTime;
                         }
                     }
                 }
@@ -1816,6 +2285,16 @@
                 
                 sound.volume = masterVolume * footstepVolume * 0.4 * distanceFactor;
             });
+            
+            // Update positional audio
+            if (positionalAudio && remotePlayerModel) {
+                // Update audio position to match remote player position
+                positionalAudio.position.copy(remotePlayerPosition);
+                
+                // Update audio rotation to match remote player rotation
+                const euler = new THREE.Euler().setFromQuaternion(remotePlayerQuaternion, 'YXZ');
+                positionalAudio.rotation.y = euler.y;
+            }
         }
 
         // Multiplayer setup
@@ -1826,11 +2305,16 @@
                 console.log('My peer ID is: ' + id);
                 myPeerIdElement.textContent = id;
                 multiplayerUI.style.display = 'block';
+                voiceChatControls.style.display = 'block';
             });
             
             peer.on('connection', (conn) => {
                 handleConnection(conn);
                 isHost = true;
+            });
+            
+            peer.on('call', (call) => {
+                handleIncomingCall(call);
             });
             
             peer.on('error', (err) => {
@@ -1849,6 +2333,196 @@
             });
         }
         
+        // Voice chat variables
+        let localStream;
+        let remoteStream;
+        let voiceCall;
+        let isVoiceChatEnabled = false;
+        let isMicMuted = false;
+        let remoteAudio;
+        let positionalAudio;
+        const voiceChatControls = document.getElementById('voice-chat-controls');
+        const voiceChatStatus = document.getElementById('voice-chat-status');
+        const voiceChatToggle = document.getElementById('voice-chat-toggle');
+        const voiceChatMute = document.getElementById('voice-chat-mute');
+        
+        // Initialize voice chat
+        async function initVoiceChat() {
+            try {
+                console.log('Initializing voice chat');
+                // Request both audio input and output devices
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: true
+                    }
+                });
+                
+                isVoiceChatEnabled = true;
+                voiceChatToggle.classList.add('active');
+                voiceChatStatus.textContent = 'Voice Chat: Ready';
+                
+                // If already connected to a peer, start the call
+                if (isConnected && connection) {
+                    startVoiceCall();
+                }
+                
+                console.log('Voice chat initialized successfully');
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                voiceChatStatus.textContent = 'Voice Chat: Microphone access denied';
+            }
+        }
+        
+        // Handle incoming voice calls
+        function handleIncomingCall(call) {
+            try {
+                console.log('Handling incoming call');
+                voiceCall = call;
+                
+                // Answer the call with our local stream if voice chat is enabled
+                if (isVoiceChatEnabled && localStream) {
+                    call.answer(localStream);
+                    console.log('Answering call with local stream');
+                } else {
+                    call.answer(); // Answer without sending our audio
+                    console.log('Answering call without local stream');
+                }
+                
+                call.on('stream', (stream) => {
+                    console.log('Received remote stream');
+                    setupRemoteAudio(stream);
+                });
+                
+                call.on('error', (error) => {
+                    console.error('Call error:', error);
+                    voiceChatStatus.textContent = 'Voice Chat: Call Error';
+                });
+                
+                call.on('close', () => {
+                    console.log('Call closed');
+                    if (positionalAudio) {
+                        positionalAudio.disconnect();
+                        if (remotePlayerModel) {
+                            remotePlayerModel.remove(positionalAudio);
+                        }
+                        positionalAudio = null;
+                    }
+                    voiceChatStatus.textContent = 'Voice Chat: Disconnected';
+                });
+            } catch (error) {
+                console.error('Error in handleIncomingCall:', error);
+                voiceChatStatus.textContent = 'Voice Chat: Setup Failed';
+            }
+        }
+        
+        // Start a voice call to the remote peer
+        function startVoiceCall() {
+            try {
+                if (!isVoiceChatEnabled || !localStream || !connection) {
+                    console.log('Cannot start call:', { isVoiceChatEnabled, hasLocalStream: !!localStream, hasConnection: !!connection });
+                    return;
+                }
+                
+                console.log('Starting voice call to:', connection.peer);
+                voiceCall = peer.call(connection.peer, localStream);
+                
+                voiceCall.on('stream', (stream) => {
+                    console.log('Received remote stream from outgoing call');
+                    setupRemoteAudio(stream);
+                });
+                
+                voiceCall.on('error', (error) => {
+                    console.error('Call error:', error);
+                    voiceChatStatus.textContent = 'Voice Chat: Call Error';
+                });
+                
+                voiceCall.on('close', () => {
+                    console.log('Call closed');
+                    if (positionalAudio) {
+                        positionalAudio.disconnect();
+                        if (remotePlayerModel) {
+                            remotePlayerModel.remove(positionalAudio);
+                        }
+                        positionalAudio = null;
+                    }
+                    voiceChatStatus.textContent = 'Voice Chat: Disconnected';
+                });
+            } catch (error) {
+                console.error('Error in startVoiceCall:', error);
+                voiceChatStatus.textContent = 'Voice Chat: Setup Failed';
+            }
+        }
+        
+        // Set up positional audio for the remote player
+        function setupRemoteAudio(stream) {
+            try {
+                // Create a new audio element for the remote stream
+                const audioElement = new Audio();
+                audioElement.srcObject = stream;
+                audioElement.autoplay = true;
+                
+                // Create positional audio if it doesn't exist
+                if (!positionalAudio) {
+                    positionalAudio = new THREE.PositionalAudio(audioListener);
+                    positionalAudio.setRefDistance(5);
+                    positionalAudio.setRolloffFactor(2);
+                    positionalAudio.setDistanceModel('exponential');
+                    positionalAudio.setDirectionalCone(180, 230, 0.5);
+                    
+                    // Create audio source from the audio element
+                    const mediaElementSource = audioContext.createMediaElementSource(audioElement);
+                    positionalAudio.setMediaElementSource(audioElement);
+                    
+                    // Add the positional audio to the remote player model
+                    if (remotePlayerModel) {
+                        remotePlayerModel.add(positionalAudio);
+                    }
+                }
+                
+                voiceChatStatus.textContent = 'Voice Chat: Connected';
+                console.log('Remote audio setup complete');
+            } catch (error) {
+                console.error('Error setting up remote audio:', error);
+                voiceChatStatus.textContent = 'Voice Chat: Audio Setup Failed';
+            }
+        }
+        
+        // Voice chat controls event listeners
+        voiceChatToggle.addEventListener('click', () => {
+            if (!isVoiceChatEnabled) {
+                initVoiceChat();
+            } else {
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                if (voiceCall) {
+                    voiceCall.close();
+                }
+                isVoiceChatEnabled = false;
+                voiceChatToggle.classList.remove('active');
+                voiceChatStatus.textContent = 'Voice Chat: Disabled';
+            }
+        });
+        
+        voiceChatMute.addEventListener('click', () => {
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    isMicMuted = !isMicMuted;
+                    audioTrack.enabled = !isMicMuted;
+                    voiceChatMute.classList.toggle('muted', isMicMuted);
+                    voiceChatMute.textContent = isMicMuted ? 'Unmute Mic' : 'Mute Mic';
+                }
+            }
+        });
+        
+        // Create an audio listener for positional audio
+        const audioListener = new THREE.AudioListener();
+        camera.add(audioListener);
+        
+        // Update the handleConnection function to include voice chat
         function handleConnection(conn) {
             connection = conn;
             
@@ -1863,6 +2537,11 @@
                 // Show system message
                 addChatMessage('Connected to another player', 'system');
                 addChatMessage('The maze layout is identical for all players', 'system');
+                
+                // Start voice chat if enabled
+                if (isVoiceChatEnabled && localStream) {
+                    startVoiceCall();
+                }
                 
                 // Load the remote player model
                 loadRemotePlayerModel();
@@ -1990,25 +2669,15 @@
             // Use the container as our remote player model
             remotePlayerModel = modelContainer;
             
-            // Log model dimensions to help with debugging
-            const box = new THREE.Box3().setFromObject(model);
-            const size = box.getSize(new THREE.Vector3());
-            console.log("Model dimensions:", size);
-            
             // Adjust scale to match desired height (around 1.7-1.8 units)
             const targetHeight = 3.0;
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            
             if (size.y > 0) {
                 const scale = targetHeight / size.y;
                 model.scale.set(scale, scale, scale);
-                console.log("Adjusted model scale to:", scale);
-                
-                // Recalculate bounding box after scaling
-                const newBox = new THREE.Box3().setFromObject(model);
-                const newSize = newBox.getSize(new THREE.Vector3());
-                console.log("New model dimensions:", newSize);
-                
-                // Adjust Y offset based on model height
-                remotePlayerYOffset = 0; // Reset to zero as we've scaled the model appropriately
+                remotePlayerYOffset = 0;
             }
             
             // Setup animation mixer
@@ -2020,8 +2689,6 @@
             let backflipAnimation = null;
 
             if (gltf.animations && gltf.animations.length > 0) {
-                console.log("Available animations:", gltf.animations);
-                
                 // Find animations by name
                 gltf.animations.forEach(clip => {
                     if (clip.name.toLowerCase().includes('idle')) {
@@ -2035,104 +2702,41 @@
                 
                 // If we found the animations, set them up
                 if (idleAnimation) {
-                    console.log("Found idle animation:", idleAnimation);
                     remotePlayerIdleAction = remotePlayerMixer.clipAction(idleAnimation);
                     remotePlayerIdleAction.setLoop(THREE.LoopRepeat);
                     remotePlayerIdleAction.play();
-                    remotePlayerIdleAction.weight = 1.0; // Start with idle animation fully weighted
-                } else {
-                    console.warn("No idle animation found");
+                    remotePlayerIdleAction.weight = 1.0;
                 }
                 
                 if (walkingAnimation) {
-                    console.log("Found walking animation:", walkingAnimation);
                     remotePlayerWalkAction = remotePlayerMixer.clipAction(walkingAnimation);
                     remotePlayerWalkAction.setLoop(THREE.LoopRepeat);
-                    remotePlayerWalkAction.timeScale = 1; // Set initial timeScale to forward
+                    remotePlayerWalkAction.timeScale = 1;
                     remotePlayerWalkAction.play();
-                    remotePlayerWalkAction.weight = 0.0; // Start with walking animation at zero weight
-                } else {
-                    console.warn("No walking animation found");
+                    remotePlayerWalkAction.weight = 0.0;
                 }
                 
                 if (backflipAnimation) {
-                    console.log("Found backflip animation:", backflipAnimation);
                     remotePlayerBackflipAction = remotePlayerMixer.clipAction(backflipAnimation);
-                    remotePlayerBackflipAction.setLoop(THREE.LoopOnce); // Only play once
-                    remotePlayerBackflipAction.clampWhenFinished = true; // Hold the last frame when finished
+                    remotePlayerBackflipAction.setLoop(THREE.LoopOnce);
+                    remotePlayerBackflipAction.clampWhenFinished = true;
                     remotePlayerBackflipAction.timeScale = 1;
-                    remotePlayerBackflipAction.weight = 0.0; // Start with backflip animation at zero weight
-                    
-                    // Get the duration of the backflip animation
+                    remotePlayerBackflipAction.weight = 0.0;
                     backflipDuration = backflipAnimation.duration;
-                    console.log("Backflip duration:", backflipDuration);
-                } else {
-                    console.warn("No backflip animation found");
                 }
-            } else {
-                console.warn("No animations found in the model");
             }
             
             // Compute bounding box and apply materials
             model.traverse((child) => {
                 if (child.isMesh) {
-                    console.log("Found mesh in model:", child.name);
                     child.geometry.computeBoundingBox();
-                    
-                    // Apply materials if needed
                     if (child.material) {
-                        // You can customize the remote player's appearance here if desired
-                        // For example, to make them a different color:
-                        // if (Array.isArray(child.material)) {
-                        //     child.material.forEach(mat => {
-                        //         mat.color.setHex(0x66a8e5); // Blue tint
-                        //     });
-                        // } else {
-                        //     child.material.color.setHex(0x66a8e5); // Blue tint
-                        // }
                         child.material.needsUpdate = true;
                     }
                 }
             });
             
-            // Create a direction helper arrow
-            const arrowDir = new THREE.Vector3(0, 0, -1);
-            const arrowOrigin = new THREE.Vector3(0, 1.5, 0);
-            const arrowLength = 2;
-            const arrowColor = 0xff0000;
-            const headLength = 0.5; // Length of the arrow head
-            const headWidth = 0.3; // Width of the arrow head
-            directionHelper = new THREE.ArrowHelper(arrowDir, arrowOrigin, arrowLength, arrowColor, headLength, headWidth);
-            remotePlayerModel.add(directionHelper);
-            
-            // Add debug objects to help visualize the model position
-            // Red sphere at the center
-            const centerSphere = new THREE.Mesh(
-                new THREE.SphereGeometry(0.1, 16, 16),
-                new THREE.MeshBasicMaterial({ color: 0xff0000 })
-            );
-            centerSphere.position.set(0, 0, 0);
-            remotePlayerModel.add(centerSphere);
-            
-            // Green sphere at head height
-            const headSphere = new THREE.Mesh(
-                new THREE.SphereGeometry(0.1, 16, 16),
-                new THREE.MeshBasicMaterial({ color: 0x00ff00 })
-            );
-            headSphere.position.set(0, 1.5, 0);
-            remotePlayerModel.add(headSphere);
-            
-            // Blue sphere in front
-            const frontSphere = new THREE.Mesh(
-                new THREE.SphereGeometry(0.1, 16, 16),
-                new THREE.MeshBasicMaterial({ color: 0x0000ff })
-            );
-            frontSphere.position.set(0, 1, -1);
-            remotePlayerModel.add(frontSphere);
-            
-            // Show system message
             addChatMessage('Remote player model loaded', 'system');
-            addChatMessage('Press V to toggle direction helper', 'system');
         }
         
         function createFallbackRemotePlayer() {
@@ -2164,34 +2768,7 @@
             // Use the container as our remote player model
             remotePlayerModel = modelContainer;
             
-            // Create a direction helper arrow
-            const arrowDir = new THREE.Vector3(0, 0, -1);
-            const arrowOrigin = new THREE.Vector3(0, 1.5, 0);
-            const arrowLength = 2;
-            const arrowColor = 0xff0000;
-            const headLength = 0.5;
-            const headWidth = 0.3;
-            directionHelper = new THREE.ArrowHelper(arrowDir, arrowOrigin, arrowLength, arrowColor, headLength, headWidth);
-            remotePlayerModel.add(directionHelper);
-            
-            // Add debug spheres
-            const centerSphere = new THREE.Mesh(
-                new THREE.SphereGeometry(0.1, 16, 16),
-                new THREE.MeshBasicMaterial({ color: 0xff0000 })
-            );
-            centerSphere.position.set(0, 0, 0);
-            remotePlayerModel.add(centerSphere);
-            
-            const frontSphere = new THREE.Mesh(
-                new THREE.SphereGeometry(0.1, 16, 16),
-                new THREE.MeshBasicMaterial({ color: 0x0000ff })
-            );
-            frontSphere.position.set(0, 1, -1);
-            remotePlayerModel.add(frontSphere);
-            
-            // Show system message
             addChatMessage('Using fallback player model', 'system');
-            addChatMessage('Press V to toggle direction helper', 'system');
         }
 
         // Initialize game
@@ -2200,7 +2777,21 @@
             loadingScreen.style.opacity = '0';
             setTimeout(() => {
                 loadingScreen.style.display = 'none';
-                controls.lock();
+                
+                // On desktop, lock pointer controls
+                if (!isMobile) {
+                    controls.lock();
+                } else {
+                    // For mobile, show the game UI right away
+                    document.getElementById('game-ui').style.display = 'block';
+                    document.getElementById('fps-counter').style.display = 'block';
+                    document.getElementById('audio-controls').style.display = 'block';
+                    
+                    // Show mobile controls info
+                    document.getElementById('mobile-controls-info').style.display = 'block';
+                    document.getElementById('desktop-controls').style.display = 'none';
+                }
+                
                 initAudio();
                 initPeerJS(); // Initialize PeerJS when the game starts
                 initChat(); // Initialize chat system
