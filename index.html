@@ -1695,9 +1695,14 @@
         ceiling.position.set(floorSize / 2, 5, floorSize / 2);
         scene.add(ceiling);
 
+        // Add ambient light to compensate for fewer point lights
+        const ambientLight = new THREE.AmbientLight(0xffffee, 0.3);
+        scene.add(ambientLight);
+
         const lights = [];
-        for (let i = 0; i < N; i++) {
-            for (let j = 0; j < M; j++) {
+        // Reduce the number of lights in the maze by only placing them at every other position
+        for (let i = 0; i < N; i += 2) {
+            for (let j = 0; j < M; j += 2) {
                 const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
                 const lightMaterial = new THREE.MeshBasicMaterial({
                     color: 0xffffff,
@@ -1709,36 +1714,36 @@
                 lightPanel.rotation.x = Math.PI / 2;
                 scene.add(lightPanel);
 
-                const light = new THREE.PointLight(0xffffee, 7, 20);
+                const light = new THREE.PointLight(0xffffee, 7, 30); // Increased range to compensate for fewer lights
                 light.position.set((j + 0.5) * roomSize, 4.5, mazeOffsetZ + (i + 0.5) * roomSize);
                 scene.add(light);
                 lights.push(light);
             }
         }
 
-        for (let x = 2; x < startingRoomWidth; x += 4) {
-            for (let z = 2; z < startingRoomDepth; z += 4) {
-                const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
-                const lightMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xffffff,
-                    side: THREE.DoubleSide
-                });
+        // Reduce the number of lights in the starting room
+        // Just add a single light in the center instead of multiple lights
+        const startingRoomLightGeometry = new THREE.PlaneGeometry(2, 2);
+        const startingRoomLightMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            side: THREE.DoubleSide
+        });
 
-                const lightPanel = new THREE.Mesh(lightGeometry, lightMaterial);
-                lightPanel.position.set(x, 4.99, z);
-                lightPanel.rotation.x = Math.PI / 2;
-                scene.add(lightPanel);
+        const startingRoomLightPanel = new THREE.Mesh(startingRoomLightGeometry, startingRoomLightMaterial);
+        startingRoomLightPanel.position.set(startingRoomWidth / 2, 4.99, startingRoomDepth / 2);
+        startingRoomLightPanel.rotation.x = Math.PI / 2;
+        scene.add(startingRoomLightPanel);
 
-                const light = new THREE.PointLight(0xffffee, 7, 20);
-                light.position.set(x, 4.5, z);
-                scene.add(light);
-                lights.push(light);
-            }
-        }
+        const startingRoomLight = new THREE.PointLight(0xffffee, 10, 30); // Brighter and longer range
+        startingRoomLight.position.set(startingRoomWidth / 2, 4.5, startingRoomDepth / 2);
+        scene.add(startingRoomLight);
+        lights.push(startingRoomLight);
 
+        // Hallway lights - reduce frequency
         const hallwayStartZ = startingRoomDepth;
         const hallwayStartX = (startingRoomWidth - hallwayWidth) / 2;
-        for (let z = hallwayStartZ + 4; z < hallwayStartZ + hallwayLength; z += 6) {
+        // Increase spacing between lights from 6 to 12 units
+        for (let z = hallwayStartZ + 6; z < hallwayStartZ + hallwayLength; z += 12) {
             const x = hallwayStartX + hallwayWidth / 2;
             
             const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
@@ -1752,7 +1757,7 @@
             lightPanel.rotation.x = Math.PI / 2;
             scene.add(lightPanel);
 
-            const light = new THREE.PointLight(0xffffee, 7, 20);
+            const light = new THREE.PointLight(0xffffee, 7, 30); // Increased range
             light.position.set(x, 4.5, z);
             scene.add(light);
             lights.push(light);
