@@ -105,6 +105,9 @@
             z-index: 10;
             text-shadow: 1px 1px 2px #000;
             display: none;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
         }
         
         #volume-slider {
@@ -319,6 +322,26 @@
             transform: translate(-50%, -50%);
         }
         
+        #look-area-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 80px;
+            height: 80px;
+            background-color: rgba(0, 0, 0, 0.2);
+            border: 2px dashed #e9e566;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #e9e566;
+            font-family: monospace;
+            font-size: 12px;
+            text-align: center;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        
         #mobile-action-buttons {
             position: absolute;
             bottom: 20px;
@@ -373,21 +396,51 @@
             }
             
             #game-ui {
-                font-size: 12px;
+                font-size: 10px;
                 max-width: 80%;
+                bottom: 80px;
             }
             
             #chat-container {
-                width: 80%;
-                max-width: 300px;
+                width: 70%;
+                max-width: 250px;
+                bottom: 150px;
+                left: 10px;
             }
             
             #multiplayer-ui {
-                max-width: 80%;
+                max-width: 70%;
+                font-size: 12px;
+                padding: 8px;
+                top: 10px;
+                left: 10px;
+                transform: scale(0.9);
+                transform-origin: top left;
             }
             
             #voice-chat-controls {
-                bottom: 80px;
+                bottom: 150px;
+                right: 10px;
+                font-size: 12px;
+                padding: 8px;
+                transform: scale(0.9);
+                transform-origin: bottom right;
+            }
+            
+            #voice-chat-toggle, #voice-chat-mute {
+                padding: 4px 8px;
+                font-size: 12px;
+            }
+            
+            #audio-controls {
+                bottom: 120px;
+                left: 10px;
+                transform: scale(0.9);
+                transform-origin: bottom left;
+            }
+            
+            #volume-slider {
+                width: 80px;
             }
             
             #desktop-controls {
@@ -397,10 +450,41 @@
             #mobile-controls-info {
                 display: block;
             }
+            
+            /* Adjust mobile controls positioning */
+            #joystick-container {
+                bottom: 15px;
+                left: 15px;
+            }
+            
+            #mobile-action-buttons {
+                bottom: 15px;
+                right: 15px;
+            }
         }
         
         /* Hide mobile controls info by default (for desktop) */
         #mobile-controls-info {
+            display: none;
+        }
+        
+        /* UI Toggle Button */
+        #ui-toggle-button {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 40px;
+            height: 40px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 2px solid #e9e566;
+            border-radius: 50%;
+            color: #e9e566;
+            font-size: 18px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 100;
             display: none;
         }
     </style>
@@ -429,7 +513,7 @@
     </div>
     
     <!-- Multiplayer UI -->
-    <div id="multiplayer-ui">
+    <div id="multiplayer-ui" style="display: none;">
         <div id="peer-id">Your ID: <span id="my-peer-id">Connecting...</span></div>
         <div id="connect-form">
             <input type="text" id="remote-peer-id" placeholder="Enter peer ID to connect">
@@ -448,7 +532,7 @@
     </div>
     
     <!-- Voice Chat Controls -->
-    <div id="voice-chat-controls">
+    <div id="voice-chat-controls" style="display: none;">
         <div id="voice-chat-status">Voice Chat: Disconnected</div>
         <button id="voice-chat-toggle">Enable Voice</button>
         <button id="voice-chat-mute">Mute Mic</button>
@@ -459,6 +543,7 @@
         <div id="joystick-container">
             <div id="joystick"></div>
         </div>
+        <div id="look-area-indicator">SWIPE TO LOOK</div>
         <div id="mobile-action-buttons">
             <div id="run-button" class="mobile-button">RUN</div>
             <div id="crouch-button" class="mobile-button">DUCK</div>
@@ -467,6 +552,9 @@
     </div>
     
     <button id="mobile-controls-toggle">Toggle Controls</button>
+    
+    <!-- UI Toggle Button -->
+    <button id="ui-toggle-button">UI</button>
     
     <audio id="fluorescent-buzz" loop preload="auto">
         <source src="fluorescent.mp3" type="audio/mpeg">
@@ -517,6 +605,7 @@
         const crouchButton = document.getElementById('crouch-button');
         const actionButton = document.getElementById('action-button');
         const mobileControlsToggle = document.getElementById('mobile-controls-toggle');
+        const uiToggleButton = document.getElementById('ui-toggle-button');
         
         // Detect if device is mobile
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -679,6 +768,7 @@
             // Show mobile controls
             mobileControls.style.display = 'block';
             mobileControlsToggle.style.display = 'block';
+            uiToggleButton.style.display = 'flex';
             
             // Initialize joystick position
             const joystickRect = joystickContainer.getBoundingClientRect();
@@ -693,15 +783,17 @@
         
         // Setup mobile controls
         function setupMobileControls() {
-            // Joystick touch events
-            joystickContainer.addEventListener('touchstart', handleJoystickStart, false);
-            joystickContainer.addEventListener('touchmove', handleJoystickMove, false);
-            joystickContainer.addEventListener('touchend', handleJoystickEnd, false);
+            // Joystick touch events - these should only affect the joystick area
+            joystickContainer.addEventListener('touchstart', handleJoystickStart, { passive: false });
+            joystickContainer.addEventListener('touchmove', handleJoystickMove, { passive: false });
+            joystickContainer.addEventListener('touchend', handleJoystickEnd, { passive: false });
+            joystickContainer.addEventListener('touchcancel', handleJoystickEnd, { passive: false });
             
-            // Look touch events (anywhere except UI elements and joystick)
-            document.addEventListener('touchstart', handleLookStart, false);
-            document.addEventListener('touchmove', handleLookMove, false);
-            document.addEventListener('touchend', handleLookEnd, false);
+            // Look touch events for the entire document
+            document.addEventListener('touchstart', handleLookStart, { passive: true });
+            document.addEventListener('touchmove', handleLookMove, { passive: false });
+            document.addEventListener('touchend', handleLookEnd, { passive: true });
+            document.addEventListener('touchcancel', handleLookEnd, { passive: true });
             
             // Action buttons
             runButton.addEventListener('touchstart', () => {
@@ -776,6 +868,47 @@
                     mobileControls.style.display = 'none';
                 }
             });
+            
+            // UI Toggle Button
+            let uiVisible = false; // Start with UI hidden on mobile
+            const uiElements = [
+                document.getElementById('game-ui'),
+                document.getElementById('fps-counter'),
+                document.getElementById('audio-controls'),
+                document.getElementById('multiplayer-ui'),
+                document.getElementById('voice-chat-controls'),
+                document.getElementById('chat-container')
+            ];
+            
+            uiToggleButton.addEventListener('click', () => {
+                uiVisible = !uiVisible;
+                
+                // Toggle UI elements
+                uiElements.forEach(element => {
+                    if (element) {
+                        if (uiVisible) {
+                            // Only show elements that should be visible
+                            if (element.id === 'chat-container' && !isChatting) {
+                                // Keep chat hidden unless chatting
+                                element.style.display = 'none';
+                            } else {
+                                element.style.display = 'block';
+                            }
+                        } else {
+                            element.style.display = 'none';
+                        }
+                    }
+                });
+                
+                // Update button appearance
+                if (uiVisible) {
+                    uiToggleButton.textContent = 'UI';
+                    uiToggleButton.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+                } else {
+                    uiToggleButton.textContent = '👁️';
+                    uiToggleButton.style.backgroundColor = 'rgba(233, 229, 102, 0.3)';
+                }
+            });
         }
         
         // Handle joystick touch start
@@ -819,6 +952,7 @@
             if (!touchFound) {
                 // Reset joystick
                 joystickActive = false;
+                joystickTouchId = null;
                 joystick.style.transform = 'translate(-50%, -50%)';
                 
                 // Reset movement flags
@@ -866,7 +1000,7 @@
         
         // Handle look touch start
         function handleLookStart(event) {
-            if (joystickActive || !gameStarted || isChatting) return;
+            if (!gameStarted || isChatting) return;
             
             // Find a touch that's not on the joystick or UI elements
             for (let i = 0; i < event.touches.length; i++) {
@@ -877,6 +1011,8 @@
                 
                 // Check if touch is on a UI element
                 const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                if (!element) continue; // Skip if no element found
+                
                 const isUIElement = element.closest('#joystick-container, #mobile-action-buttons, #multiplayer-ui, #chat-container, #voice-chat-controls, #mobile-controls-toggle');
                 
                 if (!isUIElement) {
@@ -892,6 +1028,9 @@
         function handleLookMove(event) {
             if (lookTouchId === null || !gameStarted || isChatting) return;
             
+            // Prevent default to avoid scrolling
+            event.preventDefault();
+            
             for (let i = 0; i < event.touches.length; i++) {
                 const touch = event.touches[i];
                 if (touch.identifier === lookTouchId) {
@@ -899,9 +1038,18 @@
                     const deltaX = touch.clientX - previousTouchX;
                     const deltaY = touch.clientY - previousTouchY;
                     
-                    // Rotate camera based on touch movement
-                    controls.rotateLeft(-deltaX * touchLookSensitivity * 0.002);
-                    controls.rotateUp(-deltaY * touchLookSensitivity * 0.002);
+                    // Increase sensitivity for mobile
+                    const sensitivity = 2.5;
+                    
+                    // Apply rotation directly to camera container
+                    // Reverse the X direction (positive deltaX now turns right)
+                    cameraContainer.rotation.y += deltaX * 0.01 * sensitivity;
+                    
+                    // For Y direction: positive deltaY (swipe down) should look up
+                    // and negative deltaY (swipe up) should look down
+                    const currentRotationX = camera.rotation.x;
+                    const newRotationX = currentRotationX + (deltaY * 0.01 * sensitivity);
+                    camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, newRotationX));
                     
                     // Update previous position
                     previousTouchX = touch.clientX;
@@ -1695,14 +1843,9 @@
         ceiling.position.set(floorSize / 2, 5, floorSize / 2);
         scene.add(ceiling);
 
-        // Add ambient light to compensate for fewer point lights
-        const ambientLight = new THREE.AmbientLight(0xffffee, 0.3);
-        scene.add(ambientLight);
-
         const lights = [];
-        // Reduce the number of lights in the maze by only placing them at every other position
-        for (let i = 0; i < N; i += 2) {
-            for (let j = 0; j < M; j += 2) {
+        for (let i = 0; i < N; i++) {
+            for (let j = 0; j < M; j++) {
                 const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
                 const lightMaterial = new THREE.MeshBasicMaterial({
                     color: 0xffffff,
@@ -1714,36 +1857,36 @@
                 lightPanel.rotation.x = Math.PI / 2;
                 scene.add(lightPanel);
 
-                const light = new THREE.PointLight(0xffffee, 7, 30); // Increased range to compensate for fewer lights
+                const light = new THREE.PointLight(0xffffee, 7, 20);
                 light.position.set((j + 0.5) * roomSize, 4.5, mazeOffsetZ + (i + 0.5) * roomSize);
                 scene.add(light);
                 lights.push(light);
             }
         }
 
-        // Reduce the number of lights in the starting room
-        // Just add a single light in the center instead of multiple lights
-        const startingRoomLightGeometry = new THREE.PlaneGeometry(2, 2);
-        const startingRoomLightMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffffff,
-            side: THREE.DoubleSide
-        });
+        for (let x = 2; x < startingRoomWidth; x += 4) {
+            for (let z = 2; z < startingRoomDepth; z += 4) {
+                const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
+                const lightMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    side: THREE.DoubleSide
+                });
 
-        const startingRoomLightPanel = new THREE.Mesh(startingRoomLightGeometry, startingRoomLightMaterial);
-        startingRoomLightPanel.position.set(startingRoomWidth / 2, 4.99, startingRoomDepth / 2);
-        startingRoomLightPanel.rotation.x = Math.PI / 2;
-        scene.add(startingRoomLightPanel);
+                const lightPanel = new THREE.Mesh(lightGeometry, lightMaterial);
+                lightPanel.position.set(x, 4.99, z);
+                lightPanel.rotation.x = Math.PI / 2;
+                scene.add(lightPanel);
 
-        const startingRoomLight = new THREE.PointLight(0xffffee, 10, 30); // Brighter and longer range
-        startingRoomLight.position.set(startingRoomWidth / 2, 4.5, startingRoomDepth / 2);
-        scene.add(startingRoomLight);
-        lights.push(startingRoomLight);
+                const light = new THREE.PointLight(0xffffee, 7, 20);
+                light.position.set(x, 4.5, z);
+                scene.add(light);
+                lights.push(light);
+            }
+        }
 
-        // Hallway lights - reduce frequency
         const hallwayStartZ = startingRoomDepth;
         const hallwayStartX = (startingRoomWidth - hallwayWidth) / 2;
-        // Increase spacing between lights from 6 to 12 units
-        for (let z = hallwayStartZ + 6; z < hallwayStartZ + hallwayLength; z += 12) {
+        for (let z = hallwayStartZ + 4; z < hallwayStartZ + hallwayLength; z += 6) {
             const x = hallwayStartX + hallwayWidth / 2;
             
             const lightGeometry = new THREE.PlaneGeometry(1.5, 1.5);
@@ -1757,7 +1900,7 @@
             lightPanel.rotation.x = Math.PI / 2;
             scene.add(lightPanel);
 
-            const light = new THREE.PointLight(0xffffee, 7, 30); // Increased range
+            const light = new THREE.PointLight(0xffffee, 7, 20);
             light.position.set(x, 4.5, z);
             scene.add(light);
             lights.push(light);
@@ -2309,8 +2452,12 @@
             peer.on('open', (id) => {
                 console.log('My peer ID is: ' + id);
                 myPeerIdElement.textContent = id;
-                multiplayerUI.style.display = 'block';
-                voiceChatControls.style.display = 'block';
+                
+                // Only show UI elements if not on mobile or if UI is visible
+                if (!isMobile || uiVisible) {
+                    multiplayerUI.style.display = 'block';
+                    voiceChatControls.style.display = 'block';
+                }
             });
             
             peer.on('connection', (conn) => {
@@ -2787,14 +2934,23 @@
                 if (!isMobile) {
                     controls.lock();
                 } else {
-                    // For mobile, show the game UI right away
-                    document.getElementById('game-ui').style.display = 'block';
-                    document.getElementById('fps-counter').style.display = 'block';
-                    document.getElementById('audio-controls').style.display = 'block';
+                    // For mobile, hide UI elements by default
+                    document.getElementById('game-ui').style.display = 'none';
+                    document.getElementById('fps-counter').style.display = 'none';
+                    document.getElementById('audio-controls').style.display = 'none';
+                    document.getElementById('multiplayer-ui').style.display = 'none';
+                    document.getElementById('voice-chat-controls').style.display = 'none';
                     
-                    // Show mobile controls info
+                    // Only show mobile controls info
                     document.getElementById('mobile-controls-info').style.display = 'block';
                     document.getElementById('desktop-controls').style.display = 'none';
+                    
+                    // Update UI toggle button to reflect hidden state
+                    uiToggleButton.textContent = '👁️';
+                    uiToggleButton.style.backgroundColor = 'rgba(233, 229, 102, 0.3)';
+                    
+                    // Show mobile tutorial
+                    showMobileTutorial();
                 }
                 
                 initAudio();
@@ -2804,6 +2960,55 @@
             
             clock.start();
             animate();
+        }
+        
+        // Show a brief tutorial for mobile users
+        function showMobileTutorial() {
+            // Create tutorial elements
+            const tutorial = document.createElement('div');
+            tutorial.style.position = 'fixed';
+            tutorial.style.top = '50%';
+            tutorial.style.left = '50%';
+            tutorial.style.transform = 'translate(-50%, -50%)';
+            tutorial.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+            tutorial.style.color = '#e9e566';
+            tutorial.style.padding = '20px';
+            tutorial.style.borderRadius = '10px';
+            tutorial.style.fontFamily = 'monospace';
+            tutorial.style.zIndex = '1000';
+            tutorial.style.maxWidth = '80%';
+            tutorial.style.textAlign = 'center';
+            
+            tutorial.innerHTML = `
+                <h2>Mobile Controls</h2>
+                <p>Use the <strong>joystick</strong> on the left to move</p>
+                <p>Swipe <strong>anywhere else</strong> on the screen to look around</p>
+                <p>Use the buttons on the right for actions</p>
+                <p>Use the <strong>UI button</strong> in the top right to toggle interface visibility</p>
+                <button id="tutorial-close" style="
+                    background-color: #e9e566;
+                    color: #000;
+                    border: none;
+                    padding: 10px 20px;
+                    margin-top: 20px;
+                    font-family: monospace;
+                    cursor: pointer;
+                ">Got it!</button>
+            `;
+            
+            document.body.appendChild(tutorial);
+            
+            // Add event listener to close button
+            document.getElementById('tutorial-close').addEventListener('click', () => {
+                document.body.removeChild(tutorial);
+            });
+            
+            // Auto-close after 10 seconds
+            setTimeout(() => {
+                if (document.body.contains(tutorial)) {
+                    document.body.removeChild(tutorial);
+                }
+            }, 10000);
         }
 
         // Start button event listener
