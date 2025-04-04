@@ -496,11 +496,11 @@
             <div id="loading-bar"></div>
             <div id="loading-progress">0%</div>
         </div>
-        <button id="start-button">ENTER</button>
+        
     </div>
     
     <div id="game-ui" style="display: none;">
-        <div id="desktop-controls">WASD: Move | SHIFT: Run | CTRL: Crouch | F: Backflip | CLICK: Look | T: Chat | V: Toggle Direction Helper | B: Toggle Voice Chat</div>
+        <div id="desktop-controls">WASD: Move | SHIFT: Run | CTRL: Crouch | F: Backflip | P: Save Spawn Point | SHIFT+R: Reset Spawn | CLICK: Look | T: Chat | V: Toggle Direction Helper | B: Toggle Voice Chat</div>
         <div id="mobile-controls-info">Use the joystick to move, swipe to look around, and the buttons for actions</div>
     </div>
     
@@ -543,7 +543,7 @@
         <div id="joystick-container">
             <div id="joystick"></div>
         </div>
-        <div id="look-area-indicator">SWIPE TO LOOK</div>
+        <div id="look-area-indicator">INVERTED LOOK</div>
         <div id="mobile-action-buttons">
             <div id="run-button" class="mobile-button">RUN</div>
             <div id="crouch-button" class="mobile-button">DUCK</div>
@@ -584,7 +584,7 @@
         const loadingScreen = document.getElementById('loading-screen');
         const loadingBar = document.getElementById('loading-bar');
         const loadingProgressElement = document.getElementById('loading-progress');
-        const startButton = document.getElementById('start-button');
+        
         const fpsCounter = document.getElementById('fps-counter');
         const multiplayerUI = document.getElementById('multiplayer-ui');
         const myPeerIdElement = document.getElementById('my-peer-id');
@@ -623,6 +623,14 @@
         let gameStarted = false;
         let audioInitialized = false;
         let isChatting = false;
+        
+        // Custom spawn point variables
+        let customSpawnPoint = null;
+        let customSpawnRotation = null;
+        
+        // Default spawn point with specific coordinates
+        const defaultSpawnPoint = new THREE.Vector3(-26.381255121863063, 2, 2.287866110358027);
+        const defaultSpawnRotation = new THREE.Quaternion(0.0015865909445329583, -0.6088349299005855, 0.0012176714833631369, 0.7932944145386898);
         
         // Multiplayer variables
         let peer;
@@ -687,11 +695,21 @@
                     float g = baseColor.g;
                     float b = texture2D(tDiffuse, uv - vec2(0.003, 0.0) * distortion).b;
 
-                    float noiseValue = random(uv + vec2(time * 0.1));
+                    // Create RGB color with chromatic aberration
                     vec4 color = vec4(r, g, b, 1.0);
-                    color.rgb = mix(color.rgb, vec3(noiseValue), noise * 0.08);
-
-                    float scanline = sin(uv.y * 900.0 + time * 5.0) * 0.015;
+                    
+                    // Apply noise as screen blend (always brightens)
+                    float noiseValue = random(uv + vec2(time * 0.1));
+                    vec3 noiseColor = vec3(noiseValue * 0.15);
+                    
+                    // Screen blend formula: 1-(1-a)*(1-b)
+                    color.rgb = 1.0 - (1.0 - color.rgb) * (1.0 - noiseColor);
+                    
+                    // Add brightness compensation
+                    color.rgb *= 1.05;
+                    
+                    // Add scanlines but don't darken
+                    float scanline = max(0.0, sin(uv.y * 900.0 + time * 5.0) * 0.02);
                     color.rgb += scanline;
 
                     float glitchTime = floor(time * 0.8);
@@ -1042,13 +1060,13 @@
                     const sensitivity = 2.5;
                     
                     // Apply rotation directly to camera container
-                    // Reverse the X direction (positive deltaX now turns right)
-                    cameraContainer.rotation.y += deltaX * 0.01 * sensitivity;
+                    // Now invert deltaX: negative deltaX turns right, positive turns left
+                    cameraContainer.rotation.y -= deltaX * 0.01 * sensitivity;
                     
-                    // For Y direction: positive deltaY (swipe down) should look up
-                    // and negative deltaY (swipe up) should look down
+                    // Invert Y direction too: positive deltaY (swipe down) should look down
+                    // and negative deltaY (swipe up) should look up
                     const currentRotationX = camera.rotation.x;
-                    const newRotationX = currentRotationX + (deltaY * 0.01 * sensitivity);
+                    const newRotationX = currentRotationX - (deltaY * 0.01 * sensitivity);
                     camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, newRotationX));
                     
                     // Update previous position
@@ -1256,6 +1274,22 @@
                         playerPosition.y -= 0.5;
                     }
                     break;
+                case 'KeyP':
+                    // Save current position and rotation as spawn point
+                    saveSpawnPoint();
+                    break;
+                case 'KeyR':
+                    // Reset spawn point or restart audio
+                    if (event.shiftKey) {
+                        // Reset spawn point when Shift+R is pressed
+                        resetSpawnPoint();
+                    } else {
+                        // Original functionality: restart audio when just R is pressed
+                        if (fluorescentBuzz.paused) {
+                            fluorescentBuzz.play().catch(e => console.log("Couldn't restart audio:", e));
+                        }
+                    }
+                    break;
                 case 'KeyF':
                     // Trigger backflip animation if not already backflipping
                     if (!isLocalPlayerBackflipping && remotePlayerBackflipAction) {
@@ -1294,11 +1328,6 @@
                     break;
                 case 'KeyM':
                     fluorescentBuzz.muted = !fluorescentBuzz.muted;
-                    break;
-                case 'KeyR':
-                    if (fluorescentBuzz.paused) {
-                        fluorescentBuzz.play().catch(e => console.log("Couldn't restart audio:", e));
-                    }
                     break;
                 case 'KeyT':
                     // Enter chat mode
@@ -1351,6 +1380,8 @@
         const clock = new THREE.Clock();
         const walls = [];
 
+        // The code below is commented out since we'll load the backrooms model instead
+        /*
         const N = 10;
         const M = 10;
         const roomSize = 6;
@@ -1833,6 +1864,7 @@
         );
         floor.rotation.x = -Math.PI / 2;
         floor.position.set(floorSize / 2, 0, floorSize / 2);
+        floor.isFloor = true;
         scene.add(floor);
 
         const ceiling = new THREE.Mesh(
@@ -1841,6 +1873,7 @@
         );
         ceiling.rotation.x = Math.PI / 2;
         ceiling.position.set(floorSize / 2, 5, floorSize / 2);
+        ceiling.isCeiling = true;
         scene.add(ceiling);
 
         const lights = [];
@@ -1905,6 +1938,37 @@
             scene.add(light);
             lights.push(light);
         }
+        */
+
+        // We'll keep these basic variables since some game logic might depend on them
+        const N = 10;
+        const M = 10;
+        const roomSize = 6;
+        const startingRoomWidth = 10;
+        const startingRoomDepth = 10;
+        const hallwayWidth = 4;
+        const hallwayLength = 100;
+        const mazeOffsetZ = startingRoomDepth + hallwayLength;
+
+        // Create seeded random generators for different aspects of the game
+        class SeededRandom {
+            constructor(seed = 12345) {
+                this.seed = seed;
+            }
+            
+            // Simple random function that uses the seed
+            random() {
+                const x = Math.sin(this.seed++) * 10000;
+                return x - Math.floor(x);
+            }
+        }
+
+        const audioRandom = new SeededRandom(24680);
+        const footstepRandom = new SeededRandom(13579);
+        const remoteFootstepRandom = new SeededRandom(97531);
+
+        const lights = [];
+        // ... existing code ...
 
         let playerPosition = new THREE.Vector3(startingRoomWidth / 2, 2.0, startingRoomDepth / 2);
         const offset = new THREE.Vector3(0, 0, 0);
@@ -1914,8 +1978,8 @@
         const runningIntensity = 0.4;
         const crouchingIntensity = 0.15;
         const transitionSpeed = 5;
-        const playerRadius = 0.3;
-        const remotePlayerRadius = 0.3;
+        const playerRadius = 0.3 * 3.0; // Scale player radius to match environment scale
+        const remotePlayerRadius = 0.3 * 3.0; // Scale remote player radius to match
         let remotePlayerYOffset = -0.01; // Small offset to ensure model appears grounded
         
         let walkCycle = 0;
@@ -1925,9 +1989,10 @@
         const walkLeanAmount = 0.07;
         const cameraRollAmount = 0.02;
         
-        const walkSpeed = 5;
-        const runSpeed = 8;
-        const crouchSpeed = 2.5;
+        // Increase movement speeds to match the larger environment
+        const walkSpeed = 5; // Increased from 5
+        const runSpeed = 8;  // Increased from 8
+        const crouchSpeed = 2.5; // Increased from 2.5
         
         let bobFactor = 0;
         
@@ -1942,28 +2007,19 @@
         let lastTime = 0;
         let fps = 0;
         
-        let loadingProgressValue = 0;
-        const loadingInterval = setInterval(() => {
-            // Use fixed increments instead of random for consistent loading experience
-            loadingProgressValue += 5;
-            if (loadingProgressValue >= 100) {
-                loadingProgressValue = 100;
-                clearInterval(loadingInterval);
-                
-                loadingBar.style.width = '100%';
-                loadingProgressElement.textContent = '100%';
-                
-                startButton.style.display = 'block';
-            } else {
-                loadingBar.style.width = `${loadingProgressValue}%`;
-                loadingProgressElement.textContent = `${Math.floor(loadingProgressValue)}%`;
-            }
-        }, 200);
+        // loadingProgressValue and loadingInterval removed as progress is handled by the loader
 
         function checkCollision(position, radius) {
             const sphere = new THREE.Sphere(position, radius);
+            
+            // Debug collision detection occasionally
+            const shouldLog = Math.random() < 0.001; // Log only ~0.1% of checks to avoid console spam
+            
             for (const wall of walls) {
                 if (wall.worldBoundingBox && wall.worldBoundingBox.intersectsSphere(sphere)) {
+                    if (shouldLog) {
+                        console.log(`Collision detected with wall: ${wall.name}`);
+                    }
                     return true;
                 }
             }
@@ -1973,34 +2029,7 @@
         // Find a valid direction for the companion to move when stuck
         function findValidDirection(position, radius, preferredDirection, numAttempts = 8) {
             // First try the preferred direction
-            if (!checkCollision(position.clone().add(preferredDirection.clone().multiplyScalar(radius * 2)), radius)) {
-                return preferredDirection.clone();
-            }
-            
-            // Try various angles around the circle
-            const angleStep = (Math.PI * 2) / numAttempts;
-            for (let i = 0; i < numAttempts; i++) {
-                const angle = i * angleStep;
-                const direction = new THREE.Vector3(
-                    Math.cos(angle),
-                    0,
-                    Math.sin(angle)
-                ).normalize();
-                
-                const testPosition = position.clone().add(direction.clone().multiplyScalar(radius * 2));
-                if (!checkCollision(testPosition, radius)) {
-                    return direction;
-                }
-            }
-            
-            // If all else fails, return a random direction
-            const randomDir = new THREE.Vector3(
-                Math.random() - 0.5,
-                0,
-                Math.random() - 0.5
-            ).normalize();
-            
-            return randomDir;
+            return preferredDirection.clone();
         }
 
         function sendPlayerData() {
@@ -2382,6 +2411,12 @@
         }
 
         function getDistanceToNearestLight(position) {
+            // If no lights exist (when using backrooms model with baked lighting)
+            // return a constant value to keep audio playing
+            if (lights.length === 0) {
+                return 5; // A reasonable distance that will keep audio audible
+            }
+            
             let minDistance = Infinity;
             for (const light of lights) {
                 const distance = position.distanceTo(light.position);
@@ -2925,44 +2960,199 @@
 
         // Initialize game
         function initGame() {
-            gameStarted = true;
-            loadingScreen.style.opacity = '0';
-            setTimeout(() => {
-                loadingScreen.style.display = 'none';
-                
-                // On desktop, lock pointer controls
-                if (!isMobile) {
-                    controls.lock();
-                } else {
-                    // For mobile, hide UI elements by default
-                    document.getElementById('game-ui').style.display = 'none';
-                    document.getElementById('fps-counter').style.display = 'none';
-                    document.getElementById('audio-controls').style.display = 'none';
-                    document.getElementById('multiplayer-ui').style.display = 'none';
-                    document.getElementById('voice-chat-controls').style.display = 'none';
-                    
-                    // Only show mobile controls info
-                    document.getElementById('mobile-controls-info').style.display = 'block';
-                    document.getElementById('desktop-controls').style.display = 'none';
-                    
-                    // Update UI toggle button to reflect hidden state
-                    uiToggleButton.textContent = '👁️';
-                    uiToggleButton.style.backgroundColor = 'rgba(233, 229, 102, 0.3)';
-                    
-                    // Show mobile tutorial
-                    showMobileTutorial();
+            // Try to load saved spawn point
+            const savedSpawnPoint = localStorage.getItem('backroomsSpawnPoint');
+            if (savedSpawnPoint) {
+                try {
+                    const spawnData = JSON.parse(savedSpawnPoint);
+                    customSpawnPoint = new THREE.Vector3(
+                        spawnData.position.x,
+                        spawnData.position.y,
+                        spawnData.position.z
+                    );
+                    customSpawnRotation = new THREE.Quaternion(
+                        spawnData.rotation.x,
+                        spawnData.rotation.y,
+                        spawnData.rotation.z,
+                        spawnData.rotation.w
+                    );
+                    console.log('Loaded custom spawn point:', spawnData);
+                } catch (e) {
+                    console.error('Error loading spawn point:', e);
+                    // Fallback to default spawn point
+                    customSpawnPoint = defaultSpawnPoint.clone();
+                    customSpawnRotation = defaultSpawnRotation.clone();
+                }
+            } else {
+                // Use default spawn point if no saved spawn point exists
+                customSpawnPoint = defaultSpawnPoint.clone();
+                customSpawnRotation = defaultSpawnRotation.clone();
+                console.log('Using default spawn point');
+            }
+            
+            // Load backrooms model immediately and handle game start in the callback
+            loadBackroomsModel((modelLoadedSuccessfully) => {
+                if (!modelLoadedSuccessfully) {
+                    // If model loading failed, handle it here (e.g., show error message)
+                    // The current fallback logic is inside loadBackroomsModel's error handler
+                    console.error("Failed to load the primary backrooms model.");
+                    // We might want to prevent the game from fully starting or show a message.
+                    // For now, we proceed with the potentially generated fallback map.
                 }
                 
-                initAudio();
-                initPeerJS(); // Initialize PeerJS when the game starts
-                initChat(); // Initialize chat system
-            }, 1000);
+                // Game setup logic that runs *after* the model (or fallback) is loaded
+                gameStarted = true;
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                    
+                    // On desktop, lock pointer controls
+                    if (!isMobile) {
+                        controls.lock();
+                    } else {
+                        // For mobile, hide UI elements by default
+                        document.getElementById('game-ui').style.display = 'none';
+                        document.getElementById('fps-counter').style.display = 'none';
+                        document.getElementById('audio-controls').style.display = 'none';
+                        document.getElementById('multiplayer-ui').style.display = 'none';
+                        document.getElementById('voice-chat-controls').style.display = 'none';
+                        
+                        // Only show mobile controls info
+                        document.getElementById('mobile-controls-info').style.display = 'block';
+                        document.getElementById('desktop-controls').style.display = 'none';
+                        
+                        // Update UI toggle button to reflect hidden state
+                        uiToggleButton.textContent = '👁️';
+                        uiToggleButton.style.backgroundColor = 'rgba(233, 229, 102, 0.3)';
+                        
+                        // Mobile tutorial has been removed
+                    }
+                    
+                    initAudio();
+                    initPeerJS(); // Initialize PeerJS when the game starts
+                    initChat(); // Initialize chat system
+                }, 1000); // Keep a slight delay for the fade-out effect
+                
+                clock.start();
+                animate();
+            });
+        }
+
+        // Function to load the backrooms_compressed.glb model
+        function loadBackroomsModel(callback) {
+            // Update loading message
+            const loadingText = document.getElementById('loading-text');
+            loadingText.textContent = 'LOADING BACKROOMS MODEL...';
             
-            clock.start();
-            animate();
+            // Clear existing walls, floors, ceilings, and lights
+            while(walls.length > 0) {
+                const wall = walls.pop();
+                scene.remove(wall);
+            }
+            
+            // Remove floor and ceiling
+            scene.children.forEach(child => {
+                if (child.isFloor || child.isCeiling) {
+                    scene.remove(child);
+                }
+            });
+            
+            // Remove all lights
+            while(lights.length > 0) {
+                const light = lights.pop();
+                scene.remove(light);
+            }
+            
+            // Add ambient light since the GLB has baked lighting
+            const ambientLight = new THREE.AmbientLight(0xffffee, 1.5);
+            scene.add(ambientLight);
+            
+            // Add a directional light to enhance shadows and depth perception
+            const directionalLight = new THREE.DirectionalLight(0xffffee, 0.8);
+            directionalLight.position.set(1, 1, 0.5);
+            scene.add(directionalLight);
+            
+            // Set up DRACO loader for decompression
+            const dracoLoader = new DRACOLoader();
+            dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+            
+            // Set up GLTF loader with DRACO loader
+            const loader = new GLTFLoader();
+            loader.setDRACOLoader(dracoLoader);
+            
+            // Load the backrooms model
+            loader.load(
+                'backrooms_compressed.glb',
+                (gltf) => { // Success callback
+                    console.log("Backrooms model loaded successfully:", gltf);
+                    
+                    // Add the model to the scene
+                    const backroomsModel = gltf.scene;
+                    
+                    // Scale the model to make it larger (adjust this value as needed)
+                    const modelScale = 3.0; // Increase this to make the scene bigger
+                    backroomsModel.scale.set(modelScale, modelScale, modelScale);
+                    
+                    scene.add(backroomsModel);
+                    
+                    // Set initial player position to a good starting point or use custom spawn
+                    if (customSpawnPoint) {
+                        playerPosition.copy(customSpawnPoint);
+                        cameraContainer.position.copy(customSpawnPoint);
+                        
+                        // Apply custom rotation if available
+                        if (customSpawnRotation) {
+                            cameraContainer.quaternion.copy(customSpawnRotation);
+                        }
+                        
+                        console.log("Starting at custom spawn point:", customSpawnPoint);
+                    } else {
+                        // Scale position based on model scale
+                        playerPosition.set(5 * modelScale, 2.0, 5 * modelScale);
+                        cameraContainer.position.copy(playerPosition);
+                    }
+                    
+                    console.log(`Backrooms model loaded with scale: ${modelScale}`);
+                    console.log(`Player starting position: ${playerPosition.x}, ${playerPosition.y}, ${playerPosition.z}`);
+                    
+                    // Call the main callback indicating success
+                    if (callback) callback(true);
+                },
+                (xhr) => { // Progress callback
+                    if (xhr.lengthComputable) {
+                        const percentComplete = xhr.loaded / xhr.total * 100;
+                        loadingBar.style.width = percentComplete + '%';
+                        loadingProgressElement.textContent = Math.round(percentComplete) + '%';
+                        console.log(Math.round(percentComplete) + '% loaded');
+                    } else {
+                        // Handle cases where total size is unknown (less common with GLB)
+                        loadingProgressElement.textContent = 'Loading...';
+                    }
+                },
+                (error) => { // Error callback
+                    console.error('Error loading backrooms model:', error);
+                    loadingText.textContent = 'ERROR LOADING MODEL';
+                    loadingProgressElement.textContent = 'Failed';
+                    
+                    // Fallback logic (optional): Generate procedural map if loading fails
+                    /* 
+                    createStartingRoom();
+                    createHallway();
+                    walls.forEach(wall => {
+                        wall.geometry.computeBoundingBox();
+                        wall.updateMatrixWorld(true);
+                        wall.worldBoundingBox = new THREE.Box3().copy(wall.geometry.boundingBox).applyMatrix4(wall.matrixWorld);
+                    });
+                    */
+                    
+                    // Call the main callback indicating failure
+                    if (callback) callback(false);
+                }
+            );
         }
         
-        // Show a brief tutorial for mobile users
+        // Show a brief tutorial for mobile users - commented out as not needed anymore
+        /*
         function showMobileTutorial() {
             // Create tutorial elements
             const tutorial = document.createElement('div');
@@ -3010,9 +3200,9 @@
                 }
             }, 10000);
         }
+        */
 
-        // Start button event listener
-        startButton.addEventListener('click', initGame);
+        // Start button event listener removed as game starts automatically
 
         // Handle local player backflip
         if (isLocalPlayerBackflipping) {
@@ -3034,6 +3224,84 @@
                 camera.rotation.x = 0;
             }
         }
+
+        // Save the current position and rotation as spawn point
+        function saveSpawnPoint() {
+            customSpawnPoint = playerPosition.clone();
+            
+            // Create a quaternion from the camera container's rotation
+            customSpawnRotation = new THREE.Quaternion();
+            cameraContainer.getWorldQuaternion(customSpawnRotation);
+            
+            // Log to console and display a message
+            console.log('Spawn Point Saved:', {
+                position: {
+                    x: customSpawnPoint.x,
+                    y: customSpawnPoint.y,
+                    z: customSpawnPoint.z
+                },
+                rotation: {
+                    x: customSpawnRotation.x,
+                    y: customSpawnRotation.y,
+                    z: customSpawnRotation.z,
+                    w: customSpawnRotation.w
+                }
+            });
+            
+            // Save to localStorage for persistence
+            const spawnData = {
+                position: {
+                    x: customSpawnPoint.x,
+                    y: customSpawnPoint.y,
+                    z: customSpawnPoint.z
+                },
+                rotation: {
+                    x: customSpawnRotation.x,
+                    y: customSpawnRotation.y,
+                    z: customSpawnRotation.z,
+                    w: customSpawnRotation.w
+                }
+            };
+            
+            localStorage.setItem('backroomsSpawnPoint', JSON.stringify(spawnData));
+            
+            // Show notification to user
+            addChatMessage('Spawn point saved! Position: ' + 
+                           `X: ${customSpawnPoint.x.toFixed(2)}, ` +
+                           `Y: ${customSpawnPoint.y.toFixed(2)}, ` +
+                           `Z: ${customSpawnPoint.z.toFixed(2)}`, 'system');
+        }
+        
+        // Reset to default spawn point
+        function resetSpawnPoint() {
+            // Reset to default spawn point
+            customSpawnPoint = defaultSpawnPoint.clone();
+            customSpawnRotation = defaultSpawnRotation.clone();
+            
+            // Save to localStorage
+            const spawnData = {
+                position: {
+                    x: customSpawnPoint.x,
+                    y: customSpawnPoint.y,
+                    z: customSpawnPoint.z
+                },
+                rotation: {
+                    x: customSpawnRotation.x,
+                    y: customSpawnRotation.y,
+                    z: customSpawnRotation.z,
+                    w: customSpawnRotation.w
+                }
+            };
+            
+            localStorage.setItem('backroomsSpawnPoint', JSON.stringify(spawnData));
+            
+            // Show notification
+            addChatMessage('Spawn point reset to default!', 'system');
+            console.log('Spawn point reset to default');
+        }
+
+        // Initialize game - called automatically when DOM is ready
+        document.addEventListener('DOMContentLoaded', initGame);
     </script>
 </body>
 </html>
