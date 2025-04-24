@@ -658,6 +658,11 @@
         let showDirectionHelper = true; // Toggle for direction helper
         const animationCrossfadeTime = 0.3; // Time in seconds for animation crossfade
         
+        // Agonizing character variables
+        let agonizingCharacterModel;
+        let agonizingCharacterMixer;
+        let agonizingCharacterAction;
+        
         const VHSShader = {
             uniforms: {
                 "tDiffuse": { value: null },
@@ -2405,6 +2410,11 @@
                 }
             }
 
+            // Update agonizing character animation
+            if (agonizingCharacterMixer) {
+                agonizingCharacterMixer.update(delta);
+            }
+
             updateAudio();
 
             composer.render();
@@ -3035,6 +3045,8 @@
                 
                 clock.start();
                 animate();
+                // Load the agonizing character model after the main game setup
+                loadAgonizingCharacterModel();
             });
         }
 
@@ -3302,6 +3314,120 @@
 
         // Initialize game - called automatically when DOM is ready
         document.addEventListener('DOMContentLoaded', initGame);
+
+        // Function to load the agonizing character model
+        function loadAgonizingCharacterModel() {
+            const loadingText = document.getElementById('loading-text');
+            loadingText.textContent = 'LOADING AGONIZING CHARACTER...'; // Update loading text
+
+            // Set up DRACO loader for decompression
+            const dracoLoader = new DRACOLoader();
+            dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+
+            // Set up GLTF loader with DRACO loader
+            const loader = new GLTFLoader();
+            loader.setDRACOLoader(dracoLoader);
+
+            loader.load(
+                'agonizing_character.glb',
+                (gltf) => {
+                    console.log("Agonizing character model loaded successfully:", gltf);
+                    agonizingCharacterModel = gltf.scene;
+
+                    // Apply the same scale as the backrooms model for consistency
+                    const modelScale = 3.0; // Use the same scale factor
+                    agonizingCharacterModel.scale.set(modelScale, modelScale, modelScale);
+
+                    // Set position and rotation
+                    agonizingCharacterModel.position.set(
+                        -6.078374772777589 , // Apply scale to position
+                        0 , // Adjust Y if needed, applying scale
+                        -9.309300125303995  // Apply scale to position
+                    );
+                    agonizingCharacterModel.quaternion.set(
+                        -0.015787430697653707,
+                         0.9220712676069439,
+                         0.03782611958321728,
+                         0.3848434995721852
+                    );
+
+                    scene.add(agonizingCharacterModel);
+
+                    // Setup animation mixer
+                    agonizingCharacterMixer = new THREE.AnimationMixer(agonizingCharacterModel);
+                    const agonizingClip = THREE.AnimationClip.findByName(gltf.animations, 'agonizing');
+
+                    if (agonizingClip) {
+                        agonizingCharacterAction = agonizingCharacterMixer.clipAction(agonizingClip);
+                        agonizingCharacterAction.setLoop(THREE.LoopRepeat);
+                        agonizingCharacterAction.play();
+                        console.log("Playing 'agonizing' animation loop.");
+                    } else {
+                        console.warn("'agonizing' animation not found in agonizing_character.glb");
+                    }
+
+                    addChatMessage('Agonizing character loaded', 'system');
+                },
+                (xhr) => { // Progress callback can be minimal if loading screen is already updated
+                    console.log((xhr.loaded / xhr.total * 100) + '% loaded agonizing character model');
+                },
+                (error) => {
+                    console.error('Error loading agonizing character model:', error);
+                    addChatMessage('Error loading agonizing character', 'system');
+                }
+            );
+        }
+
+        // Show a brief tutorial for mobile users - commented out as not needed anymore
+        /*
+        function showMobileTutorial() {
+            // Create tutorial elements
+            const tutorial = document.createElement('div');
+            tutorial.style.position = 'fixed';
+            tutorial.style.top = '50%';
+            tutorial.style.left = '50%';
+            tutorial.style.transform = 'translate(-50%, -50%)';
+            tutorial.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+            tutorial.style.color = '#e9e566';
+            tutorial.style.padding = '20px';
+            tutorial.style.borderRadius = '10px';
+            tutorial.style.fontFamily = 'monospace';
+            tutorial.style.zIndex = '1000';
+            tutorial.style.maxWidth = '80%';
+            tutorial.style.textAlign = 'center';
+            
+            tutorial.innerHTML = `
+                <h2>Mobile Controls</h2>
+                <p>Use the <strong>joystick</strong> on the left to move</p>
+                <p>Swipe <strong>anywhere else</strong> on the screen to look around</p>
+                <p>Use the buttons on the right for actions</p>
+                <p>Use the <strong>UI button</strong> in the top right to toggle interface visibility</p>
+                <button id="tutorial-close" style="
+                    background-color: #e9e566;
+                    color: #000;
+                    border: none;
+                    padding: 10px 20px;
+                    margin-top: 20px;
+                    font-family: monospace;
+                    cursor: pointer;
+                ">Got it!</button>
+            `;
+            
+            document.body.appendChild(tutorial);
+            
+            // Add event listener to close button
+            document.getElementById('tutorial-close').addEventListener('click', () => {
+                document.body.removeChild(tutorial);
+            });
+            
+            // Auto-close after 10 seconds
+            setTimeout(() => {
+                if (document.body.contains(tutorial)) {
+                    document.body.removeChild(tutorial);
+                }
+            }, 10000);
+        }
+        */
     </script>
 </body>
 </html>
