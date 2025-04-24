@@ -662,6 +662,12 @@
         let agonizingCharacterModel;
         let agonizingCharacterMixer;
         let agonizingCharacterAction;
+        let agonizingCharacterRunningAction; // Add variable for running animation
+        let isAgonizingChasing = false; // State variable for chasing
+        const agonizingCharacterRunSpeed = 4 * 3.0; // Define running speed, adjusted for scale
+        const agonizingCharacterRadius = 0.3 * 3.0; // Define radius for collision, adjusted for scale
+        let lastAgonizingDataSentTime = 0; // Timer for sending agonizing character data
+        const AGONIZING_DATA_SEND_INTERVAL = 0.1; // Send agonizing data 10 times per second
         
         const VHSShader = {
             uniforms: {
@@ -1261,7 +1267,7 @@
             
             // If in chat mode, don't process movement keys
             if (isChatting) return;
-            
+
             switch (event.code) {
                 case 'KeyW': moveForward = true; break;
                 case 'KeyS': moveBackward = true; break;
@@ -1346,17 +1352,94 @@
                     }
                     break;
                 case 'KeyV':
-                    // Toggle direction helper visibility
-                    if (directionHelper) {
-                        showDirectionHelper = !showDirectionHelper;
-                        directionHelper.visible = showDirectionHelper;
-                        addChatMessage(`Direction helper ${showDirectionHelper ? 'shown' : 'hidden'}`, 'system');
+                    // Toggle agonizing character chasing state
+                    if (isHost || !isConnected) { // Only host (or single player) toggles state
+                        isAgonizingChasing = !isAgonizingChasing;
+                        addChatMessage(`Agonizing character chase ${isAgonizingChasing ? 'enabled' : 'disabled'}`, 'system');
+
+                        // Send immediate state update if host and connected
+                        if (isHost && isConnected && connection) {
+                            sendAgonizingState();
+                        }
                     }
                     break;
                 case 'KeyB':
                     voiceChatToggle.click();
                     break;
             }
+
+            // Update agonizing character animation and movement
+            if (agonizingCharacterMixer) {
+                agonizingCharacterMixer.update(delta);
+
+                // Host calculates movement and collision
+                if ((isHost || !isConnected) && isAgonizingChasing && agonizingCharacterModel && playerPosition) {
+                    // --- Chase Logic (moved inside host check) ---
+                    const direction = new THREE.Vector3().subVectors(playerPosition, agonizingCharacterModel.position);
+                    direction.y = 0; // Keep movement horizontal
+                    direction.normalize();
+
+                    const moveDistance = agonizingCharacterRunSpeed * delta;
+                    const potentialPosition = agonizingCharacterModel.position.clone().add(direction.clone().multiplyScalar(moveDistance));
+
+                    // Collision Check
+                    const characterSphere = new THREE.Sphere(potentialPosition, agonizingCharacterRadius);
+                    let chaseCollision = false;
+                    for (const wall of walls) {
+                        if (wall.worldBoundingBox && wall.worldBoundingBox.intersectsSphere(characterSphere)) {
+                            chaseCollision = true;
+                            break;
+                        }
+                    }
+
+                    if (!chaseCollision) {
+                        agonizingCharacterModel.position.copy(potentialPosition);
+                    }
+
+                    // Rotation (LookAt)
+                    const lookAtPosition = new THREE.Vector3(playerPosition.x, agonizingCharacterModel.position.y, playerPosition.z);
+                    agonizingCharacterModel.lookAt(lookAtPosition);
+                    // --- End Chase Logic ---
+                }
+
+                // Handle animation crossfading (runs on both host and client)
+                if (agonizingCharacterAction && agonizingCharacterRunningAction) {
+                    if (isAgonizingChasing) {
+                        // Crossfade from agonizing to running
+                        agonizingCharacterRunningAction.play();
+                        agonizingCharacterAction.play(); // Keep both playing during fade
+
+                        agonizingCharacterRunningAction.weight = Math.min(1, agonizingCharacterRunningAction.weight + delta / animationCrossfadeTime);
+                        agonizingCharacterAction.weight = 1 - agonizingCharacterRunningAction.weight;
+
+                        if (agonizingCharacterAction.weight === 0) {
+                            agonizingCharacterAction.stop(); // Stop agonizing animation fully once faded out
+                        }
+                    } else {
+                        // Crossfade from running to agonizing
+                        agonizingCharacterAction.play();
+                        agonizingCharacterRunningAction.play(); // Keep both playing during fade
+
+                        agonizingCharacterAction.weight = Math.min(1, agonizingCharacterAction.weight + delta / animationCrossfadeTime);
+                        agonizingCharacterRunningAction.weight = 1 - agonizingCharacterAction.weight;
+
+                        if (agonizingCharacterRunningAction.weight === 0) {
+                            agonizingCharacterRunningAction.stop(); // Stop running animation fully once faded out
+                        }
+                    }
+                }
+
+                // Host sends state periodically
+                if (isHost && isConnected && connection && agonizingCharacterModel) {
+                    const currentTime = clock.getElapsedTime();
+                    if (currentTime - lastAgonizingDataSentTime >= AGONIZING_DATA_SEND_INTERVAL) {
+                        sendAgonizingState();
+                        lastAgonizingDataSentTime = currentTime;
+                    }
+                }
+            }
+
+            updateAudio();
         });
         
         document.addEventListener('keyup', (event) => {
@@ -2413,6 +2496,72 @@
             // Update agonizing character animation
             if (agonizingCharacterMixer) {
                 agonizingCharacterMixer.update(delta);
+
+                // Host calculates movement and collision
+                if ((isHost || !isConnected) && isAgonizingChasing && agonizingCharacterModel && playerPosition) {
+                    // --- Chase Logic (moved inside host check) ---
+                    const direction = new THREE.Vector3().subVectors(playerPosition, agonizingCharacterModel.position);
+                    direction.y = 0; // Keep movement horizontal
+                    direction.normalize();
+
+                    const moveDistance = agonizingCharacterRunSpeed * delta;
+                    const potentialPosition = agonizingCharacterModel.position.clone().add(direction.clone().multiplyScalar(moveDistance));
+
+                    // Collision Check
+                    const characterSphere = new THREE.Sphere(potentialPosition, agonizingCharacterRadius);
+                    let chaseCollision = false;
+                    for (const wall of walls) {
+                        if (wall.worldBoundingBox && wall.worldBoundingBox.intersectsSphere(characterSphere)) {
+                            chaseCollision = true;
+                            break;
+                        }
+                    }
+
+                    if (!chaseCollision) {
+                        agonizingCharacterModel.position.copy(potentialPosition);
+                    }
+
+                    // Rotation (LookAt)
+                    const lookAtPosition = new THREE.Vector3(playerPosition.x, agonizingCharacterModel.position.y, playerPosition.z);
+                    agonizingCharacterModel.lookAt(lookAtPosition);
+                    // --- End Chase Logic ---
+                }
+
+                // Handle animation crossfading (runs on both host and client)
+                if (agonizingCharacterAction && agonizingCharacterRunningAction) {
+                    if (isAgonizingChasing) {
+                        // Crossfade from agonizing to running
+                        agonizingCharacterRunningAction.play();
+                        agonizingCharacterAction.play(); // Keep both playing during fade
+
+                        agonizingCharacterRunningAction.weight = Math.min(1, agonizingCharacterRunningAction.weight + delta / animationCrossfadeTime);
+                        agonizingCharacterAction.weight = 1 - agonizingCharacterRunningAction.weight;
+
+                        if (agonizingCharacterAction.weight === 0) {
+                            agonizingCharacterAction.stop(); // Stop agonizing animation fully once faded out
+                        }
+                    } else {
+                        // Crossfade from running to agonizing
+                        agonizingCharacterAction.play();
+                        agonizingCharacterRunningAction.play(); // Keep both playing during fade
+
+                        agonizingCharacterAction.weight = Math.min(1, agonizingCharacterAction.weight + delta / animationCrossfadeTime);
+                        agonizingCharacterRunningAction.weight = 1 - agonizingCharacterAction.weight;
+
+                        if (agonizingCharacterRunningAction.weight === 0) {
+                            agonizingCharacterRunningAction.stop(); // Stop running animation fully once faded out
+                        }
+                    }
+                }
+
+                // Host sends state periodically
+                if (isHost && isConnected && connection && agonizingCharacterModel) {
+                    const currentTime = clock.getElapsedTime();
+                    if (currentTime - lastAgonizingDataSentTime >= AGONIZING_DATA_SEND_INTERVAL) {
+                        sendAgonizingState();
+                        lastAgonizingDataSentTime = currentTime;
+                    }
+                }
             }
 
             updateAudio();
@@ -2508,6 +2657,13 @@
             peer.on('connection', (conn) => {
                 handleConnection(conn);
                 isHost = true;
+
+                // When a client connects, host sends the current agonizing state immediately
+                conn.on('open', () => {
+                    if (agonizingCharacterModel) { // Ensure model exists before sending state
+                        sendAgonizingState();
+                    }
+                });
             });
             
             peer.on('call', (call) => {
@@ -2813,6 +2969,25 @@
                     
                     // Add chat message
                     addChatMessage('Other player is doing a backflip!', 'system');
+                }
+            } else if (data.type === 'agonizing_state') {
+                // Client receives agonizing character state
+                if (agonizingCharacterModel) {
+                    agonizingCharacterModel.position.set(
+                        data.position.x,
+                        data.position.y,
+                        data.position.z
+                    );
+                    agonizingCharacterModel.quaternion.set(
+                        data.quaternion.x,
+                        data.quaternion.y,
+                        data.quaternion.z,
+                        data.quaternion.w
+                    );
+
+                    // Update local chasing state based on host's state
+                    // This will trigger the animation crossfade on the client side
+                    isAgonizingChasing = data.isChasing;
                 }
             }
         }
@@ -3356,14 +3531,26 @@
                     // Setup animation mixer
                     agonizingCharacterMixer = new THREE.AnimationMixer(agonizingCharacterModel);
                     const agonizingClip = THREE.AnimationClip.findByName(gltf.animations, 'agonizing');
+                    const runningClip = THREE.AnimationClip.findByName(gltf.animations, 'running'); // Find running clip
 
                     if (agonizingClip) {
                         agonizingCharacterAction = agonizingCharacterMixer.clipAction(agonizingClip);
                         agonizingCharacterAction.setLoop(THREE.LoopRepeat);
-                        agonizingCharacterAction.play();
+                        agonizingCharacterAction.play(); // Start agonizing by default
+                        agonizingCharacterAction.weight = 1.0; // Start with full weight
                         console.log("Playing 'agonizing' animation loop.");
                     } else {
                         console.warn("'agonizing' animation not found in agonizing_character.glb");
+                    }
+
+                    if (runningClip) {
+                        agonizingCharacterRunningAction = agonizingCharacterMixer.clipAction(runningClip);
+                        agonizingCharacterRunningAction.setLoop(THREE.LoopRepeat);
+                        agonizingCharacterRunningAction.weight = 0.0; // Start with zero weight
+                        // Don't play running initially, wait for crossfade
+                        console.log("'running' animation found.");
+                    } else {
+                        console.warn("'running' animation not found in agonizing_character.glb");
                     }
 
                     addChatMessage('Agonizing character loaded', 'system');
@@ -3428,6 +3615,27 @@
             }, 10000);
         }
         */
+
+        // Function for host to send agonizing character state
+        function sendAgonizingState() {
+            if (isConnected && connection && agonizingCharacterModel) {
+                connection.send({
+                    type: 'agonizing_state',
+                    position: {
+                        x: agonizingCharacterModel.position.x,
+                        y: agonizingCharacterModel.position.y,
+                        z: agonizingCharacterModel.position.z
+                    },
+                    quaternion: {
+                        x: agonizingCharacterModel.quaternion.x,
+                        y: agonizingCharacterModel.quaternion.y,
+                        z: agonizingCharacterModel.quaternion.z,
+                        w: agonizingCharacterModel.quaternion.w
+                    },
+                    isChasing: isAgonizingChasing
+                });
+            }
+        }
     </script>
 </body>
 </html>
