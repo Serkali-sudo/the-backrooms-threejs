@@ -5,4 +5,4 @@ You can play it from your browser. Heres the link: https://serkali-sudo.github.i
 
 Switched from native threejs objects lights to backrooms model with baked lighting from sketchfab 
 
-![Ekran görüntüsü 2025-03-02 141554](https://github.com/user-attachments/assets/a5dd4bfb-9325-4cd4-914b-a44eb6b8d5f5)
+![Ekran görüntüsü 2025-04-28 235840](https://github.com/user-attachments/assets/c8e17878-8c03-423f-b639-94d035160443)
