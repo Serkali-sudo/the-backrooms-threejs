@@ -566,8 +566,8 @@
     <script type="importmap">
     {
         "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.174.0/build/three.module.js",
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.174.0/examples/jsm/"
+            "three": "https://cdn.jsdelivr.net/npm/three@0.176.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.176.0/examples/jsm/"
         }
     }
     </script>
@@ -580,6 +580,9 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+        // --- Global Scale Factor ---
+        const modelScale = 1.0; // Set the desired global scale for models
 
         const loadingScreen = document.getElementById('loading-screen');
         const loadingBar = document.getElementById('loading-bar');
@@ -628,8 +631,8 @@
         let customSpawnPoint = null;
         let customSpawnRotation = null;
         
-        // Default spawn point with specific coordinates
-        const defaultSpawnPoint = new THREE.Vector3(-26.381255121863063, 2, 2.287866110358027);
+        // Default spawn point with specific coordinates (adjusted for modelScale = 1.0)
+        const defaultSpawnPoint = new THREE.Vector3(-26.317897406332854, 2, 2.228253243537819);
         const defaultSpawnRotation = new THREE.Quaternion(0.0015865909445329583, -0.6088349299005855, 0.0012176714833631369, 0.7932944145386898);
         
         // Multiplayer variables
@@ -664,8 +667,8 @@
         let agonizingCharacterAction;
         let agonizingCharacterRunningAction; // Add variable for running animation
         let isAgonizingChasing = false; // State variable for chasing
-        const agonizingCharacterRunSpeed = 4 * 3.0; // Define running speed, adjusted for scale
-        const agonizingCharacterRadius = 0.3 * 3.0; // Define radius for collision, adjusted for scale
+        const agonizingCharacterRunSpeed = 4.0 * 3; // Define running speed, adjusted for scale
+        const agonizingCharacterRadius = 0.3 * 3; // Define radius for collision, adjusted for scale
         let lastAgonizingDataSentTime = 0; // Timer for sending agonizing character data
         const AGONIZING_DATA_SEND_INTERVAL = 0.1; // Send agonizing data 10 times per second
         
@@ -701,13 +704,8 @@
                     float verticalDisplace = sin(uv.y * 10.0 + time * lineSpeed) * 0.0008;
                     uv.x += verticalDisplace * distortion;
 
-                    vec4 baseColor = texture2D(tDiffuse, uv);
-                    float r = texture2D(tDiffuse, uv + vec2(0.003, 0.0) * distortion).r;
-                    float g = baseColor.g;
-                    float b = texture2D(tDiffuse, uv - vec2(0.003, 0.0) * distortion).b;
-
-                    // Create RGB color with chromatic aberration
-                    vec4 color = vec4(r, g, b, 1.0);
+                    // Use the original texture color, removing chromatic aberration
+                    vec4 color = texture2D(tDiffuse, uv);
                     
                     // Apply noise as screen blend (always brightens)
                     float noiseValue = random(uv + vec2(time * 0.1));
@@ -1365,6 +1363,20 @@
                     break;
                 case 'KeyB':
                     voiceChatToggle.click();
+                    break;
+                case 'KeyG': // Trigger chair fall
+                    if (chairModel && !isChairFalling) {
+                        // Set chair position above the player when key is pressed
+                        chairModel.position.set(
+                            cameraContainer.position.x,
+                            4.5 * modelScale, // Start just below scaled ceiling height
+                            cameraContainer.position.z
+                        );
+                        chairModel.rotation.set(0, Math.random() * Math.PI * 2, 0); // Random initial rotation
+                        chairModel.visible = true;
+                        isChairFalling = true;
+                        console.log("Chair fall triggered!");
+                    }
                     break;
             }
 
@@ -2066,8 +2078,8 @@
         const runningIntensity = 0.4;
         const crouchingIntensity = 0.15;
         const transitionSpeed = 5;
-        const playerRadius = 0.3 * 3.0; // Scale player radius to match environment scale
-        const remotePlayerRadius = 0.3 * 3.0; // Scale remote player radius to match
+        const playerRadius = 0.3 * modelScale; // Scale player radius to match environment scale
+        const remotePlayerRadius = 0.3 * modelScale; // Scale remote player radius to match
         let remotePlayerYOffset = -0.01; // Small offset to ensure model appears grounded
         
         let walkCycle = 0;
@@ -2565,6 +2577,22 @@
             }
 
             updateAudio();
+
+            // Handle chair falling
+            if (isChairFalling && chairModel) {
+                const gravity = 9.8 * modelScale; // Scaled Earth gravity
+                chairModel.position.y -= gravity * delta; // Apply gravity
+
+                // Calculate the chair's lowest point in world space
+                const floorLevel = chairMinYOffset; // The lowest point should rest at y=0
+
+                // Check for floor collision based on the lowest point
+                if (chairModel.position.y <= -chairMinYOffset) { // Check if lowest point reached floor
+                    chairModel.position.y = -chairMinYOffset; // Set position so lowest point is at y=0
+                    isChairFalling = false; // Stop falling
+                    console.log("Chair landed at y=", chairModel.position.y);
+                }
+            }
 
             composer.render();
         }
@@ -3096,6 +3124,8 @@
                     remotePlayerBackflipAction.weight = 0.0;
                     backflipDuration = backflipAnimation.duration;
                 }
+            } else {
+                console.warn("No animations found in character.glb");
             }
             
             // Compute bounding box and apply materials
@@ -3222,6 +3252,8 @@
                 animate();
                 // Load the agonizing character model after the main game setup
                 loadAgonizingCharacterModel();
+                // Load the chair model after other models
+                loadChairModel(); 
             });
         }
 
@@ -3509,15 +3541,15 @@
                     console.log("Agonizing character model loaded successfully:", gltf);
                     agonizingCharacterModel = gltf.scene;
 
-                    // Apply the same scale as the backrooms model for consistency
-                    const modelScale = 3.0; // Use the same scale factor
-                    agonizingCharacterModel.scale.set(modelScale, modelScale, modelScale);
+                    // Apply the global scale for consistency
+                    agonizingCharacterModel.scale.set(3, 3, 3);
 
-                    // Set position and rotation
+                    // Set position and rotation (Adjust initial position if needed for scale 1.0)
+                    // These coordinates were likely for scale 3.0, divide X and Z by 3.
                     agonizingCharacterModel.position.set(
-                        -6.078374772777589 , // Apply scale to position
-                        0 , // Adjust Y if needed, applying scale
-                        -9.309300125303995  // Apply scale to position
+                        -6.219561416696432,
+                        0, // Y position might need adjustment based on the model's origin
+                        -11.157563717556068
                     );
                     agonizingCharacterModel.quaternion.set(
                         -0.015787430697653707,
@@ -3635,6 +3667,51 @@
                     isChasing: isAgonizingChasing
                 });
             }
+        }
+
+        let chairModel = null;
+        let isChairFalling = false;
+        let chairMinYOffset = 0; // Store the offset from the chair's origin to its lowest point
+
+        // Function to load the chair model
+        function loadChairModel() {
+            const loadingText = document.getElementById('loading-text');
+            loadingText.textContent = 'LOADING EXTRA ASSETS...'; // Update loading text slightly
+
+            const dracoLoader = new DRACOLoader();
+            dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+            const loader = new GLTFLoader();
+            loader.setDRACOLoader(dracoLoader);
+            loader.load(
+                'chair.glb',
+                (gltf) => {
+                    console.log("Chair model loaded successfully.");
+                    chairModel = gltf.scene;
+
+                    // Scale the chair model consistently with the environment *before* calculating offset
+                    chairModel.scale.set(modelScale, modelScale, modelScale);
+
+                    // Calculate the bounding box *after* scaling
+                    const box = new THREE.Box3().setFromObject(chairModel);
+                    chairMinYOffset = box.min.y; // Get the lowest Y point relative to the model's origin
+                    console.log("Calculated chair min Y offset:", chairMinYOffset);
+
+
+                    // Set initial position high up, relative to potential player start, make invisible
+                    chairModel.position.set(playerPosition.x, 5.0 * modelScale, playerPosition.z); // Start near ceiling
+                    chairModel.visible = false; // Start invisible
+
+                    scene.add(chairModel);
+                    console.log("Chair model added to scene, initially invisible.");
+                },
+                (xhr) => {
+                    console.log((xhr.loaded / xhr.total * 100) + '% loaded chair model');
+                },
+                (error) => {
+                    console.error('Error loading chair model:', error);
+                    addChatMessage('Error loading chair asset', 'system');
+                }
+            );
         }
     </script>
 </body>
